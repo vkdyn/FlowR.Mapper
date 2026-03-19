@@ -1,6 +1,7 @@
 using FlowR.Mapper;
 using FlowR.Mapper.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Linq.Expressions;
 
 // ============================================================
 // FlowR.Mapper Sample — demonstrates full API surface
@@ -128,8 +129,8 @@ public class ECommerceProfile : MapperProfile
         cfg.CreateMap<OrderEntity, OrderDto>();
 
         cfg.CreateMap<UserEntity, UserDto>()
-            .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"))
-            .ForMember(d => d.Age, opt => opt.MapFrom(s => DateTime.Today.Year - s.DateOfBirth.Year))
+            .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")))
+            .ForMember(d => d.Age, opt => opt.MapFrom((Expression<Func<UserEntity, int>>)(s => DateTime.Today.Year - s.DateOfBirth.Year)))
             .DeepMap();
 
         cfg.CreateMap<UserEntity, UserFlatDto>()

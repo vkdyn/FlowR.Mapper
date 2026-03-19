@@ -1,6 +1,7 @@
 using FlowR.Mapper;
 using FlowR.Mapper.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Linq.Expressions;
 using Xunit;
 
 namespace FlowR.Mapper.Tests;
@@ -86,8 +87,8 @@ public class UserMappingProfile : MapperProfile
         cfg.CreateMap<OrderEntity, OrderDto>();
 
         cfg.CreateMap<UserEntity, UserDto>()
-            .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"))
-            .ForMember(d => d.Age, opt => opt.MapFrom(s => DateTime.Today.Year - s.DateOfBirth.Year))
+            .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")))
+            .ForMember(d => d.Age, opt => opt.MapFrom((Expression<Func<UserEntity, int>>)(s => DateTime.Today.Year - s.DateOfBirth.Year)))
             .DeepMap();
 
         cfg.CreateMap<UserEntity, UserFlatDto>()
@@ -253,7 +254,7 @@ public class MapperTests
 
         var user = new UserEntity { Id = 1, Email = "secret@test.com" };
         var dto = mapper.Map<UserEntity, UserDto>(user);
-        Assert.Null(dto.Email); // default value, not mapped
+        Assert.Equal(string.Empty, dto.Email); // default value, not mapped
     }
 
     // ---- ConstructUsing (immutable records) ----
@@ -284,14 +285,14 @@ public class MapperTests
             cfg.CreateMap<UserEntity, UserDto>()
                 .ForMember(d => d.Email, opt =>
                 {
-                    opt.MapFrom(s => s.Email);
+                    opt.MapFrom((Expression<Func<UserEntity, string>>)(s => s.Email));
                     opt.Condition(s => s.IsActive);
                 });
         });
 
         var inactiveUser = new UserEntity { Email = "inactive@test.com", IsActive = false };
         var dto = mapper.Map<UserEntity, UserDto>(inactiveUser);
-        Assert.Null(dto.Email); // Skipped because IsActive is false
+        Assert.Equal(string.Empty, dto.Email); // skipped, remains DTO default
     }
 
     // ---- Before/After hooks ----

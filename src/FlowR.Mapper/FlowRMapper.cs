@@ -14,7 +14,7 @@ public sealed class FlowRMapper : IMapper
     // Compiled mapper cache: (TSource, TDest) -> compiled Func<TSource, TDest>
     private readonly ConcurrentDictionary<(Type, Type), Delegate> _compiledMappers = new();
 
-    public FlowRMapper(MapperRegistry registry)
+    internal FlowRMapper(MapperRegistry registry)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
     }
