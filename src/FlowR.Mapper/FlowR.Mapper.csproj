@@ -1,31 +1,49 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net6.0;net7.0;net8.0</TargetFrameworks>
+    <TargetFrameworks>net6.0;net7.0;net8.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
 
-    <!-- NuGet package metadata -->
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+
     <PackageId>FlowR.Mapper</PackageId>
     <Version>1.0.0</Version>
-    <Authors>FlowR Contributors</Authors>
-    <Description>A high-performance, open-source object mapper for .NET. Map objects, flatten nested types, deep-map hierarchies, project to IQueryable (EF Core), and validate your configuration — all with a clean, fluent API.</Description>
-    <PackageTags>mapper;object-mapper;mapping;automapper;ef-core;linq;projection;dependency-injection</PackageTags>
+    <Authors>Krishneel Kumar</Authors>
+    <Company>FlowR.Mapper</Company>
+    <Description>A high-performance, open-source object mapper for .NET. Map objects, flatten nested types, deep-map hierarchies, project to IQueryable, and validate configuration with a clean fluent API.</Description>
+    <PackageTags>mapper object-mapper mapping automapper projection iqueryable dependency-injection dotnet</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/yourusername/FlowR</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/yourusername/FlowR</RepositoryUrl>
+
+    <PackageProjectUrl>https://github.com/vkdyn/FlowR.Mapper</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/vkdyn/FlowR.Mapper</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
 </Project>

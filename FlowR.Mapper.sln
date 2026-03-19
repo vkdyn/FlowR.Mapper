@@ -1,0 +1,47 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlowR.Mapper.Sample", "samples\FlowR.Mapper.Sample\FlowR.Mapper.Sample.csproj", "{0EBDA312-2008-B1F5-483C-41B4972134CD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlowR.Mapper", "src\FlowR.Mapper\FlowR.Mapper.csproj", "{C82CE63A-F17A-41CB-D5C1-55F30A061296}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlowR.Mapper.Tests", "tests\FlowR.Mapper.Tests\FlowR.Mapper.Tests.csproj", "{A3427CC3-D045-2CE1-44AC-C7FC2EE7DCC5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0EBDA312-2008-B1F5-483C-41B4972134CD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0EBDA312-2008-B1F5-483C-41B4972134CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0EBDA312-2008-B1F5-483C-41B4972134CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0EBDA312-2008-B1F5-483C-41B4972134CD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C82CE63A-F17A-41CB-D5C1-55F30A061296}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C82CE63A-F17A-41CB-D5C1-55F30A061296}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C82CE63A-F17A-41CB-D5C1-55F30A061296}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C82CE63A-F17A-41CB-D5C1-55F30A061296}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3427CC3-D045-2CE1-44AC-C7FC2EE7DCC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3427CC3-D045-2CE1-44AC-C7FC2EE7DCC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3427CC3-D045-2CE1-44AC-C7FC2EE7DCC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3427CC3-D045-2CE1-44AC-C7FC2EE7DCC5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{0EBDA312-2008-B1F5-483C-41B4972134CD} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
+		{C82CE63A-F17A-41CB-D5C1-55F30A061296} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A3427CC3-D045-2CE1-44AC-C7FC2EE7DCC5} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BA33156B-4AB2-4475-9794-4EC274157DC3}
+	EndGlobalSection
+EndGlobal
