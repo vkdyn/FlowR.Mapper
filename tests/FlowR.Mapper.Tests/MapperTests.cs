@@ -1,75 +1,13 @@
 using FlowR.Mapper;
 using FlowR.Mapper.Extensions;
+using FlowR.Mapper.Tests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq.Expressions;
 using Xunit;
 
 namespace FlowR.Mapper.Tests;
 
-// ======================================================
-// Models
-// ======================================================
 
-public class UserEntity
-{
-    public int Id { get; set; }
-    public string FirstName { get; set; } = "";
-    public string LastName { get; set; } = "";
-    public string Email { get; set; } = "";
-    public DateTime DateOfBirth { get; set; }
-    public Address? Address { get; set; }
-    public List<OrderEntity> Orders { get; set; } = [];
-    public bool IsActive { get; set; }
-    public decimal? Salary { get; set; }
-}
-
-public class Address
-{
-    public string Street { get; set; } = "";
-    public string City { get; set; } = "";
-    public string PostCode { get; set; } = "";
-}
-
-public class AddressDto
-{
-    public string Street { get; set; } = "";
-    public string City { get; set; } = "";
-    public string PostCode { get; set; } = "";
-}
-
-public class UserDto
-{
-    public int Id { get; set; }
-    public string FullName { get; set; } = "";
-    public string Email { get; set; } = "";
-    public int Age { get; set; }
-    public AddressDto? Address { get; set; }
-    public List<OrderDto> Orders { get; set; } = [];
-    public bool IsActive { get; set; }
-}
-
-// Flattened DTO
-public class UserFlatDto
-{
-    public int Id { get; set; }
-    public string Email { get; set; } = "";
-    public string AddressCity { get; set; } = "";
-    public string AddressPostCode { get; set; } = "";
-}
-
-public class OrderEntity
-{
-    public int OrderId { get; set; }
-    public decimal Total { get; set; }
-    public string Status { get; set; } = "";
-}
-
-public class OrderDto
-{
-    public int OrderId { get; set; }
-    public decimal Total { get; set; }
-    public string Status { get; set; } = "";
-}
 
 // Immutable record
 public record ProductRecord(int Id, string Name, decimal Price);
@@ -388,5 +326,100 @@ public class MapperTests
         var dto = mapper.Map<OrderDto>(user);
         Assert.Equal(7, dto.OrderId);
         Assert.Equal(55m, dto.Total);
+    }
+    [Fact]
+    public void ProjectTo_Extension_ProjectsQueryableToDto()
+    {
+        IMapper mapper = BuildMapper();
+
+        IQueryable<OrderEntity> query = new List<OrderEntity>
+        {
+            new OrderEntity
+            {
+                OrderId = 1,
+                Total = 25.50m,
+                Status = "Pending"
+            },
+            new OrderEntity
+            {
+                OrderId = 2,
+                Total = 99.99m,
+                Status = "Complete"
+            }
+        }.AsQueryable();
+
+        List<OrderDto> result = query
+            .ProjectTo<OrderEntity, OrderDto>(mapper)
+            .ToList();
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal(1, result[0].OrderId);
+        Assert.Equal(25.50m, result[0].Total);
+        Assert.Equal("Pending", result[0].Status);
+        Assert.Equal(2, result[1].OrderId);
+        Assert.Equal(99.99m, result[1].Total);
+        Assert.Equal("Complete", result[1].Status);
+    }
+
+    [Fact]
+    public void ProjectTo_Extension_AllowsWhereBeforeProjection()
+    {
+        IMapper mapper = BuildMapper();
+
+        IQueryable<OrderEntity> query = new List<OrderEntity>
+        {
+            new OrderEntity
+            {
+                OrderId = 1,
+                Total = 25.50m,
+                Status = "Pending"
+            },
+            new OrderEntity
+            {
+                OrderId = 2,
+                Total = 99.99m,
+                Status = "Complete"
+            }
+        }.AsQueryable();
+
+        OrderDto? result = query
+            .Where(x => x.OrderId == 2)
+            .ProjectTo<OrderEntity, OrderDto>(mapper)
+            .FirstOrDefault();
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.OrderId);
+        Assert.Equal(99.99m, result.Total);
+        Assert.Equal("Complete", result.Status);
+    }
+
+    [Fact]
+    public void ProjectTo_Extension_ThrowsWhenSourceIsNull()
+    {
+        IMapper mapper = BuildMapper();
+
+        IQueryable<OrderEntity>? query = null;
+
+        Assert.Throws<ArgumentNullException>(() =>
+            query!.ProjectTo<OrderEntity, OrderDto>(mapper));
+    }
+
+    [Fact]
+    public void ProjectTo_Extension_ThrowsWhenMapperIsNull()
+    {
+        IQueryable<OrderEntity> query = new List<OrderEntity>
+        {
+            new OrderEntity
+            {
+                OrderId = 1,
+                Total = 25.50m,
+                Status = "Pending"
+            }
+        }.AsQueryable();
+
+        IMapper? mapper = null;
+
+        Assert.Throws<ArgumentNullException>(() =>
+            query.ProjectTo<OrderEntity, OrderDto>(mapper!));
     }
 }
