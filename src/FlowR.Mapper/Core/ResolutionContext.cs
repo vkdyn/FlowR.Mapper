@@ -1,6 +1,7 @@
+using FlowR.Mapper;
 using FlowR.Mapper.Interfaces;
 
-namespace FlowR.Mapper.Core;
+namespace FlowR.Mapper;
 
 /// <summary>
 /// Provides context and state during a mapping operation.

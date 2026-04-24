@@ -1,3 +1,4 @@
+using FlowR.Mapper.Configuration;
 using FlowR.Mapper.Exceptions;
 using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Internal;
@@ -6,16 +7,13 @@ using System.Reflection;
 
 namespace FlowR.Mapper.Core;
 
-
 /// <summary>
-/// The FlowR.Mapper engine.
-/// All mapping delegates are compiled once on first use and cached — near zero overhead on hot paths.
+/// Default FlowR mapper implementation.
 /// </summary>
 public sealed class FlowRMapper : IMapper
 {
     private readonly MapperRegistry _registry;
-    // Compiled mapper cache: (TSource, TDest) -> compiled Func<TSource, TDest>
-    private readonly ConcurrentDictionary<(Type, Type), Delegate> _compiledMappers = new();
+    private readonly ConcurrentDictionary<MappingConfiguration, bool> _appliedBulkMemberOptions = new();
 
     internal FlowRMapper(MapperRegistry registry)
     {
@@ -26,7 +24,8 @@ public sealed class FlowRMapper : IMapper
     public TDestination Map<TDestination>(object source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        var config = _registry.GetOrThrow(source.GetType(), typeof(TDestination));
+
+        MappingConfiguration config = _registry.GetOrThrow(source.GetType(), typeof(TDestination));
         return (TDestination)ExecuteMapping(source, null, config, source.GetType(), typeof(TDestination))!;
     }
 
@@ -35,15 +34,18 @@ public sealed class FlowRMapper : IMapper
     {
         if (source == null)
         {
-            var config2 = _registry.Get(typeof(TSource), typeof(TDestination));
-            if (config2?.NullSubstitute is TDestination sub) return sub;
+            MappingConfiguration? nullConfig = _registry.Get(typeof(TSource), typeof(TDestination));
+            if (nullConfig?.NullSubstitute is TDestination substitute)
+            {
+                return substitute;
+            }
+
             return default!;
         }
 
-        // Handle polymorphism — check if derived type mapping exists
-        var actualSourceType = source.GetType();
-        var config = _registry.Get(actualSourceType, typeof(TDestination))
-                     ?? _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
+        Type actualSourceType = source.GetType();
+        MappingConfiguration config = _registry.Get(actualSourceType, typeof(TDestination))
+            ?? _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
 
         return (TDestination)ExecuteMapping(source, null, config, actualSourceType, typeof(TDestination))!;
     }
@@ -51,392 +53,581 @@ public sealed class FlowRMapper : IMapper
     /// <inheritdoc />
     public TDestination Map<TSource, TDestination>(TSource source, TDestination destination)
     {
-        ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
-        var config = _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
+
+        MappingConfiguration config = _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
+
+        if (source == null)
+        {
+            if (config.TypeConverter != null)
+            {
+                return (TDestination)ExecuteMapping(null, destination, config, typeof(TSource), typeof(TDestination))!;
+            }
+
+            return destination;
+        }
+
         return (TDestination)ExecuteMapping(source, destination, config, typeof(TSource), typeof(TDestination))!;
     }
 
     /// <inheritdoc />
     public IEnumerable<TDestination> MapList<TSource, TDestination>(IEnumerable<TSource> source)
-        => source.Select(s => Map<TSource, TDestination>(s));
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Select(Map<TSource, TDestination>);
+    }
 
     /// <inheritdoc />
     public List<TDestination> MapToList<TSource, TDestination>(IEnumerable<TSource> source)
-        => source.Select(s => Map<TSource, TDestination>(s)).ToList();
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Select(Map<TSource, TDestination>).ToList();
+    }
 
     /// <inheritdoc />
     public TDestination[] MapToArray<TSource, TDestination>(IEnumerable<TSource> source)
-        => source.Select(s => Map<TSource, TDestination>(s)).ToArray();
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Select(Map<TSource, TDestination>).ToArray();
+    }
 
     /// <inheritdoc />
     public IQueryable<TDestination> ProjectTo<TSource, TDestination>(IQueryable<TSource> source)
     {
-        var config = _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
+        ArgumentNullException.ThrowIfNull(source);
+
+        MappingConfiguration config = _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
         var projection = ProjectionBuilder.BuildProjection<TSource, TDestination>(config, _registry);
         return source.Select(projection);
     }
 
     /// <inheritdoc />
     public bool HasMapping<TSource, TDestination>()
-        => _registry.Has(typeof(TSource), typeof(TDestination));
+    {
+        return _registry.Has(typeof(TSource), typeof(TDestination));
+    }
 
     /// <inheritdoc />
     public void AssertConfigurationIsValid()
     {
-        var errors = new List<string>();
+        List<string> errors = [];
 
-        foreach (var config in _registry.All())
+        foreach (MappingConfiguration config in _registry.All())
         {
-            if (!config.ValidateAllMembers) continue;
-
-            var destProperties = config.DestinationType
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanWrite)
-                .Select(p => p.Name)
-                .ToHashSet();
-
-            var sourceProperties = config.SourceType
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Select(p => p.Name)
-                .ToHashSet();
-
-            foreach (var destProp in destProperties)
+            if (!config.ValidateAllMembers)
             {
-                if (config.IgnoredMembers.Contains(destProp)) continue;
-                if (config.MemberResolvers.ContainsKey(destProp)) continue;
-                if (config.MemberConstants.ContainsKey(destProp)) continue;
-                if (sourceProperties.Contains(destProp)) continue;
+                continue;
+            }
 
-                // Try flattening: DestinationAddressCity -> source.Address.City
-                if (config.FlattenEnabled && TryResolveFlattenedMember(config.SourceType, destProp)) continue;
+            HashSet<string> sourceProperties = config.SourceType
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(property => property.CanRead)
+                .Select(property => property.Name)
+                .ToHashSet();
 
-                errors.Add($"[{config.SourceType.Name} -> {config.DestinationType.Name}] " +
-                           $"Destination member '{destProp}' is not mapped and not ignored.");
+            foreach (PropertyInfo destinationProperty in GetWritableProperties(config.DestinationType))
+            {
+                if (config.IgnoredMembers.Contains(destinationProperty.Name))
+                {
+                    continue;
+                }
+
+                if (config.MemberResolvers.ContainsKey(destinationProperty.Name)
+                    || config.MemberConstants.ContainsKey(destinationProperty.Name)
+                    || config.ValueResolvers.ContainsKey(destinationProperty.Name)
+                    || config.PathResolvers.Keys.Any(path => path.Split('.')[0] == destinationProperty.Name)
+                    || sourceProperties.Contains(destinationProperty.Name))
+                {
+                    continue;
+                }
+
+                if (config.FlattenEnabled && TryResolveFlattenedMember(config.SourceType, destinationProperty.Name))
+                {
+                    continue;
+                }
+
+                errors.Add($"[{config.SourceType.Name} -> {config.DestinationType.Name}] Destination member '{destinationProperty.Name}' is not mapped and not ignored.");
             }
         }
 
         if (errors.Count > 0)
-            throw new MapperConfigurationException(
-                $"FlowR.Mapper configuration errors:\n{string.Join("\n", errors)}");
-    }
-
-    private bool TryResolveFlattenedMember(Type sourceType, string destMemberName)
-    {
-        // Try to find a nested property path matching the destination name
-        var properties = sourceType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        foreach (var prop in properties)
         {
-            if (destMemberName.StartsWith(prop.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                var remainingName = destMemberName[prop.Name.Length..];
-                if (string.IsNullOrEmpty(remainingName)) return true;
-                if (TryResolveFlattenedMember(prop.PropertyType, remainingName)) return true;
-            }
+            throw new MapperConfigurationException($"FlowR.Mapper configuration errors:\n{string.Join("\n", errors)}");
         }
-        return false;
     }
 
-    private object? ExecuteMapping(object source, object? existingDest, MappingConfiguration config,
-        Type sourceType, Type destType)
+    private object? ExecuteMapping(
+        object? source,
+        object? existingDestination,
+        MappingConfiguration config,
+        Type sourceType,
+        Type destinationType)
     {
-        // Type converter short-circuits everything
+        ApplyBulkMemberOptions(config);
+
         if (config.TypeConverter != null)
         {
-            // Check if converter expects destination parameter
-            var converterParams = config.TypeConverter.Method.GetParameters();
-            if (converterParams.Length == 2)
+            ParameterInfo[] parameters = config.TypeConverter.Method.GetParameters();
+            if (parameters.Length == 2)
             {
-                // For 2-param converter, pass existing dest or default value (don't try to create)
-                var destForConverter = existingDest ?? GetDefaultValue(destType);
-                return config.TypeConverter.DynamicInvoke(source, destForConverter);
+                object? destinationValue = existingDestination ?? GetDefaultValue(destinationType);
+                return config.TypeConverter.DynamicInvoke(source, destinationValue);
             }
-            else
-            {
-                return config.TypeConverter.DynamicInvoke(source);
-            }
+
+            return config.TypeConverter.DynamicInvoke(source);
         }
 
-        // Check global condition
-        if (config.GlobalCondition != null)
+        if (source == null)
         {
-            var condResult = config.GlobalCondition.DynamicInvoke(source, existingDest);
-            if (condResult is false) return existingDest;
+            return existingDestination;
         }
 
-        // Create destination
-        var dest = existingDest ?? CreateDestination(config, source);
+        object destinationForContext = existingDestination ?? CreateDestination(config, source);
+        ResolutionContext context = new(source, destinationForContext, sourceType, destinationType, this);
 
-        // Create resolution context
-        var context = new ResolutionContext(
-            source: source,
-            destination: dest,
-            sourceType: sourceType,
-            destinationType: destType,
-            mapper: this
-        );
+        if (config.PreCondition != null && !InvokeBoolean(config.PreCondition, source, destinationForContext, context))
+        {
+            return existingDestination;
+        }
 
-        // Run before hooks
-        foreach (var before in config.BeforeMapActions)
-            before.Execute(source, dest, context);
+        if (config.GlobalCondition != null && !InvokeBoolean(config.GlobalCondition, source, destinationForContext, context))
+        {
+            return existingDestination;
+        }
 
-        // Map all properties
-        MapProperties(source, dest, config, sourceType, destType, depth: 0);
+        object destination = destinationForContext;
 
-        // Run after hooks
-        foreach (var after in config.AfterMapActions)
-            after.Execute(source, dest, context);
+        foreach (IMappingActionWrapper beforeAction in config.BeforeMapActions)
+        {
+            beforeAction.Execute(source, destination, context);
+        }
 
-        return dest;
+        foreach ((Type baseSource, Type baseDestination) in config.BaseTypeMappings)
+        {
+            MappingConfiguration? baseConfig = _registry.Get(baseSource, baseDestination);
+            if (baseConfig != null)
+            {
+                ApplyBulkMemberOptions(baseConfig);
+                MapProperties(source, destination, baseConfig, baseSource, baseDestination, 0, context);
+            }
+        }
+
+        MapProperties(source, destination, config, sourceType, destinationType, 0, context);
+
+        foreach (IMappingActionWrapper afterAction in config.AfterMapActions)
+        {
+            afterAction.Execute(source, destination, context);
+        }
+
+        return destination;
     }
 
-    private void MapProperties(object source, object dest, MappingConfiguration config,
-        Type sourceType, Type destType, int depth)
+    private void MapProperties(
+        object source,
+        object destination,
+        MappingConfiguration config,
+        Type sourceType,
+        Type destinationType,
+        int depth,
+        ResolutionContext context)
     {
-        if (depth > config.MaxDepth) return;
+        if (depth > config.MaxDepth)
+        {
+            return;
+        }
 
-        var sourceProps = sourceType
+        Dictionary<string, PropertyInfo> sourceProperties = sourceType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead)
-            .ToDictionary(p => p.Name);
+            .Where(property => property.CanRead)
+            .ToDictionary(property => property.Name);
 
-        var destProps = destType
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite)
-            .ToList();
+        List<PropertyInfo> destinationProperties = GetWritableProperties(destinationType).ToList();
 
-        // Sort by mapping order if specified
         if (config.MemberMappingOrder.Count > 0)
         {
-            destProps = destProps
-                .OrderBy(p => config.MemberMappingOrder.TryGetValue(p.Name, out var order) ? order : int.MaxValue)
+            destinationProperties = destinationProperties
+                .OrderBy(property => config.MemberMappingOrder.TryGetValue(property.Name, out int order) ? order : int.MaxValue)
                 .ToList();
         }
 
-        // Track which members have been explicitly configured
-        var configuredMembers = new HashSet<string>(
-            config.MemberResolvers.Keys
-            .Concat(config.MemberConstants.Keys)
-            .Concat(config.IgnoredMembers)
-            .Concat(config.ValueResolvers.Keys)
-            .Concat(config.PathResolvers.Keys.Select(p => p.Split('.')[0]))
-        );
-
-        foreach (var destProp in destProps)
+        foreach (PropertyInfo destinationProperty in destinationProperties)
         {
-            if (config.IgnoredMembers.Contains(destProp.Name)) continue;
-            if (IsGloballyIgnored(destProp.Name)) continue;
-
-            // UseDestinationValue - skip mapping for this member
-            if (config.UseDestinationValueMembers.Contains(destProp.Name)) continue;
-
-            // Check member-level condition
-            if (config.MemberConditions.TryGetValue(destProp.Name, out var memberCond))
+            if (config.IgnoredMembers.Contains(destinationProperty.Name) || IsGloballyIgnored(destinationProperty.Name))
             {
-                var condResult = memberCond.DynamicInvoke(source);
-                if (condResult is false) continue;
+                continue;
+            }
+
+            if (config.UseDestinationValueMembers.Contains(destinationProperty.Name))
+            {
+                continue;
+            }
+
+            if (config.MemberPreConditions.TryGetValue(destinationProperty.Name, out Delegate? memberPreCondition)
+                && !InvokeBoolean(memberPreCondition, source, destination, context))
+            {
+                continue;
             }
 
             object? value = null;
             bool resolved = false;
 
-            // Priority 1: Constant value
-            if (config.MemberConstants.TryGetValue(destProp.Name, out var constant))
+            if (config.MemberConstants.TryGetValue(destinationProperty.Name, out object? constant))
             {
                 value = constant;
                 resolved = true;
             }
-            // Priority 2: Value resolver (IValueResolver)
-            else if (config.ValueResolvers.TryGetValue(destProp.Name, out var valueResolver))
+            else if (config.ValueResolvers.TryGetValue(destinationProperty.Name, out object? valueResolver))
             {
-                var resolverType = valueResolver.GetType();
-                var resolveMethod = resolverType.GetMethod("Resolve");
-                var currentValue = destProp.GetValue(dest);
-                
-                var context = new ResolutionContext(source, dest, sourceType, destType, this);
-                context.Depth = depth;
-                value = resolveMethod!.Invoke(valueResolver, new[] { source, dest, currentValue, context });
+                MethodInfo? resolveMethod = valueResolver.GetType().GetMethod("Resolve");
+                object? currentValue = destinationProperty.GetValue(destination);
+                value = resolveMethod!.Invoke(valueResolver, [source, destination, currentValue, context]);
                 resolved = true;
             }
-            // Priority 3: Custom resolver
-            else if (config.MemberResolvers.TryGetValue(destProp.Name, out var resolver))
+            else if (config.MemberResolvers.TryGetValue(destinationProperty.Name, out Delegate? resolver))
             {
-                value = resolver.DynamicInvoke(resolver.Method.GetParameters().Length == 2
-                    ? new[] { source, dest }
-                    : new[] { source });
+                value = InvokeResolver(resolver, source, destination);
                 resolved = true;
             }
-            // Priority 3: Name match on source
-            else if (sourceProps.TryGetValue(destProp.Name, out var sourceProp))
+            else if (sourceProperties.TryGetValue(destinationProperty.Name, out PropertyInfo? sourceProperty))
             {
-                value = sourceProp.GetValue(source);
+                value = sourceProperty.GetValue(source);
                 resolved = true;
 
-                // Deep map: if destination property type has its own mapping
-                if (config.DeepMapEnabled && value != null
-                    && !IsSimpleType(destProp.PropertyType)
-                    && _registry.Has(sourceProp.PropertyType, destProp.PropertyType))
+                if (config.DeepMapEnabled
+                    && value != null
+                    && !IsSimpleType(destinationProperty.PropertyType)
+                    && _registry.Has(sourceProperty.PropertyType, destinationProperty.PropertyType))
                 {
-                    var nestedConfig = _registry.GetOrThrow(sourceProp.PropertyType, destProp.PropertyType);
-                    value = ExecuteMapping(value, null, nestedConfig, sourceProp.PropertyType, destProp.PropertyType);
+                    MappingConfiguration nestedConfig = _registry.GetOrThrow(sourceProperty.PropertyType, destinationProperty.PropertyType);
+                    value = ExecuteMapping(value, null, nestedConfig, sourceProperty.PropertyType, destinationProperty.PropertyType);
                 }
             }
-            // Priority 4: Flattening
             else if (config.FlattenEnabled)
             {
-                value = TryGetFlattenedValue(source, sourceProps, destProp.Name);
-                if (value != null) resolved = true;
+                value = TryGetFlattenedValue(source, sourceProperties, destinationProperty.Name);
+                resolved = value != null;
             }
 
-            if (!resolved) continue;
-
-            // Null substitute
-            if (value == null && config.MemberNullSubstitutes.TryGetValue(destProp.Name, out var nullSub))
-                value = nullSub;
-
-            // Apply global value transforms
-            if (value != null && _registry.GlobalValueTransforms.TryGetValue(destProp.PropertyType, out var transform))
-                value = transform.DynamicInvoke(value);
-
-            // Handle collections
-            if (value != null && IsCollectionType(destProp.PropertyType) && IsCollectionType(value.GetType()))
+            if (!resolved)
             {
-                value = MapCollection(value, destProp.PropertyType, depth + 1);
+                continue;
+            }
+
+            object? currentDestinationValue = destinationProperty.GetValue(destination);
+
+            if (config.MemberConditions.TryGetValue(destinationProperty.Name, out Delegate? memberCondition)
+                && !InvokeBoolean(memberCondition, source, destination, value, currentDestinationValue, context))
+            {
+                continue;
+            }
+
+            if (value == null && config.MemberNullSubstitutes.TryGetValue(destinationProperty.Name, out object? nullSubstitute))
+            {
+                value = nullSubstitute;
+            }
+
+            if (value == null && destinationProperty.PropertyType.IsValueType && Nullable.GetUnderlyingType(destinationProperty.PropertyType) == null)
+            {
+                continue;
+            }
+
+            if (value != null && _registry.GlobalValueTransforms.TryGetValue(destinationProperty.PropertyType, out Delegate? transform))
+            {
+                value = transform.DynamicInvoke(value);
+            }
+
+            if (value != null && IsCollectionType(destinationProperty.PropertyType) && IsCollectionType(value.GetType()))
+            {
+                value = MapCollection(value, destinationProperty.PropertyType, depth + 1);
             }
 
             try
             {
-                destProp.SetValue(dest, value);
+                destinationProperty.SetValue(destination, value);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                throw new MappingException(
-                    $"Error setting '{destProp.Name}' on '{destType.Name}': {ex.Message}", ex);
+                throw new MappingException($"Error setting '{destinationProperty.Name}' on '{destinationType.Name}': {exception.Message}", exception);
             }
         }
 
-        // Handle path-based mappings (ForPath)
-        foreach (var pathMapping in config.PathResolvers)
+        foreach (KeyValuePair<string, Delegate> pathMapping in config.PathResolvers)
         {
-            SetNestedProperty(dest, pathMapping.Key, pathMapping.Value.DynamicInvoke(source));
+            SetNestedProperty(destination, pathMapping.Key, pathMapping.Value.DynamicInvoke(source));
         }
 
-        foreach (var pathConstant in config.PathConstants)
+        foreach (KeyValuePair<string, object?> pathConstant in config.PathConstants)
         {
-            SetNestedProperty(dest, pathConstant.Key, pathConstant.Value);
+            SetNestedProperty(destination, pathConstant.Key, pathConstant.Value);
         }
     }
 
-    private void SetNestedProperty(object obj, string path, object? value)
+    private void ApplyBulkMemberOptions(MappingConfiguration config)
     {
-        var parts = path.Split('.');
-        object current = obj;
-        
-        for (int i = 0; i < parts.Length - 1; i++)
+        _appliedBulkMemberOptions.GetOrAdd(config, currentConfig =>
         {
-            var prop = current.GetType().GetProperty(parts[i]);
-            if (prop == null) return;
-            
-            var nextValue = prop.GetValue(current);
+            HashSet<string> configuredMembers = new(
+                currentConfig.MemberResolvers.Keys
+                    .Concat(currentConfig.MemberConstants.Keys)
+                    .Concat(currentConfig.IgnoredMembers)
+                    .Concat(currentConfig.ValueResolvers.Keys)
+                    .Concat(currentConfig.PathResolvers.Keys.Select(path => path.Split('.')[0])));
+
+            foreach (PropertyInfo destinationProperty in GetWritableProperties(currentConfig.DestinationType))
+            {
+                if (currentConfig.ForAllMembersAction != null)
+                {
+                    ApplyMemberOptionsAction(currentConfig.ForAllMembersAction, destinationProperty.Name, currentConfig);
+                }
+
+                if (currentConfig.ForAllOtherMembersAction != null && !configuredMembers.Contains(destinationProperty.Name))
+                {
+                    ApplyMemberOptionsAction(currentConfig.ForAllOtherMembersAction, destinationProperty.Name, currentConfig);
+                }
+            }
+
+            return true;
+        });
+    }
+
+    private static void ApplyMemberOptionsAction(Delegate action, string memberName, MappingConfiguration config)
+    {
+        Type memberOptionsType = typeof(MemberOptions<,,>).MakeGenericType(config.SourceType, config.DestinationType, typeof(object));
+        object memberOptions = Activator.CreateInstance(memberOptionsType, memberName, config)!;
+        action.DynamicInvoke(memberOptions);
+    }
+
+    private static object? InvokeResolver(Delegate resolver, object source, object destination)
+    {
+        ParameterInfo[] parameters = resolver.Method.GetParameters();
+        return parameters.Length switch
+        {
+            1 => resolver.DynamicInvoke(source),
+            2 => resolver.DynamicInvoke(source, destination),
+            _ => throw new MappingException($"Unsupported resolver signature with {parameters.Length} parameters.")
+        };
+    }
+
+    private static bool InvokeBoolean(Delegate predicate, object source, object destination, ResolutionContext context)
+    {
+        ParameterInfo[] parameters = predicate.Method.GetParameters();
+        object? result = parameters.Length switch
+        {
+            1 when parameters[0].ParameterType == typeof(ResolutionContext) => predicate.DynamicInvoke(context),
+            1 => predicate.DynamicInvoke(source),
+            2 => predicate.DynamicInvoke(source, destination),
+            3 => predicate.DynamicInvoke(source, destination, context),
+            _ => throw new MappingException($"Unsupported predicate signature with {parameters.Length} parameters.")
+        };
+
+        return result is not false;
+    }
+
+    private static bool InvokeBoolean(
+        Delegate predicate,
+        object source,
+        object destination,
+        object? sourceMember,
+        object? destinationMember,
+        ResolutionContext context)
+    {
+        ParameterInfo[] parameters = predicate.Method.GetParameters();
+        object? result = parameters.Length switch
+        {
+            1 when parameters[0].ParameterType == typeof(ResolutionContext) => predicate.DynamicInvoke(context),
+            1 => predicate.DynamicInvoke(source),
+            2 => predicate.DynamicInvoke(source, destination),
+            3 => predicate.DynamicInvoke(source, destination, context),
+            4 => predicate.DynamicInvoke(source, destination, sourceMember, destinationMember),
+            5 => predicate.DynamicInvoke(source, destination, sourceMember, destinationMember, context),
+            _ => throw new MappingException($"Unsupported predicate signature with {parameters.Length} parameters.")
+        };
+
+        return result is not false;
+    }
+
+    private static void SetNestedProperty(object instance, string path, object? value)
+    {
+        string[] parts = path.Split('.');
+        object current = instance;
+
+        for (int index = 0; index < parts.Length - 1; index++)
+        {
+            PropertyInfo? property = current.GetType().GetProperty(parts[index]);
+            if (property == null)
+            {
+                return;
+            }
+
+            object? nextValue = property.GetValue(current);
             if (nextValue == null)
             {
-                nextValue = Activator.CreateInstance(prop.PropertyType);
-                prop.SetValue(current, nextValue);
+                nextValue = Activator.CreateInstance(property.PropertyType);
+                property.SetValue(current, nextValue);
             }
+
             current = nextValue!;
         }
-        
-        var finalProp = current.GetType().GetProperty(parts[^1]);
-        finalProp?.SetValue(current, value);
+
+        PropertyInfo? finalProperty = current.GetType().GetProperty(parts[^1]);
+        finalProperty?.SetValue(current, value);
     }
 
-    private object? TryGetFlattenedValue(object source,
-        Dictionary<string, PropertyInfo> sourceProps, string destMemberName)
+    private static object? TryGetFlattenedValue(
+        object source,
+        Dictionary<string, PropertyInfo> sourceProperties,
+        string destinationMemberName)
     {
-        foreach (var prop in sourceProps.Values)
+        foreach (PropertyInfo property in sourceProperties.Values)
         {
-            if (!destMemberName.StartsWith(prop.Name, StringComparison.OrdinalIgnoreCase)) continue;
-            var remainingName = destMemberName[prop.Name.Length..];
+            if (!destinationMemberName.StartsWith(property.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string remainingName = destinationMemberName[property.Name.Length..];
             if (string.IsNullOrEmpty(remainingName))
-                return prop.GetValue(source);
+            {
+                return property.GetValue(source);
+            }
 
-            var nestedValue = prop.GetValue(source);
-            if (nestedValue == null) return null;
+            object? nestedValue = property.GetValue(source);
+            if (nestedValue == null)
+            {
+                return null;
+            }
 
-            var nestedProps = nestedValue.GetType()
+            Dictionary<string, PropertyInfo> nestedProperties = nestedValue.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead)
-                .ToDictionary(p => p.Name);
+                .Where(nestedProperty => nestedProperty.CanRead)
+                .ToDictionary(nestedProperty => nestedProperty.Name);
 
-            return TryGetFlattenedValue(nestedValue, nestedProps, remainingName);
+            return TryGetFlattenedValue(nestedValue, nestedProperties, remainingName);
         }
+
         return null;
     }
 
-    private object? MapCollection(object sourceCollection, Type destCollectionType, int depth)
+    private object? MapCollection(object sourceCollection, Type destinationCollectionType, int depth)
     {
-        var sourceEnumerable = ((System.Collections.IEnumerable)sourceCollection).Cast<object>().ToList();
-        if (sourceEnumerable.Count == 0) return CreateEmptyCollection(destCollectionType);
+        List<object> sourceItems = ((System.Collections.IEnumerable)sourceCollection).Cast<object>().ToList();
+        if (sourceItems.Count == 0)
+        {
+            return CreateEmptyCollection(destinationCollectionType);
+        }
 
-        var destElementType = GetCollectionElementType(destCollectionType);
-        var sourceElementType = sourceEnumerable.First().GetType();
+        Type? destinationElementType = GetCollectionElementType(destinationCollectionType);
+        Type sourceElementType = sourceItems[0].GetType();
 
-        if (destElementType == null) return sourceCollection;
+        if (destinationElementType == null)
+        {
+            return sourceCollection;
+        }
 
-        // Try to find a mapping for the element types
-        var elementConfig = _registry.Get(sourceElementType, destElementType);
+        MappingConfiguration? elementConfig = _registry.Get(sourceElementType, destinationElementType);
 
-        var mappedItems = sourceEnumerable.Select(item =>
-            elementConfig != null
-                ? ExecuteMapping(item, null, elementConfig, sourceElementType, destElementType)
-                : item
-        ).ToList();
+        List<object?> mappedItems = sourceItems
+            .Select(item => elementConfig != null
+                ? ExecuteMapping(item, null, elementConfig, sourceElementType, destinationElementType)
+                : item)
+            .ToList();
 
-        return CreateCollection(mappedItems, destCollectionType, destElementType);
+        return CreateCollection(mappedItems, destinationCollectionType, destinationElementType);
     }
 
     private static object CreateDestination(MappingConfiguration config, object source)
     {
         if (config.CustomConstructor != null)
+        {
             return config.CustomConstructor.DynamicInvoke(source)!;
+        }
 
         try
         {
             return Activator.CreateInstance(config.DestinationType)
-                ?? throw new MappingException($"Cannot create instance of '{config.DestinationType.Name}'. " +
-                    "Ensure it has a parameterless constructor or use ConstructUsing().");
+                ?? throw new MappingException($"Cannot create instance of '{config.DestinationType.Name}'. Ensure it has a parameterless constructor or use ConstructUsing().");
         }
-        catch (MissingMethodException)
+        catch (MissingMethodException exception)
         {
-            throw new MappingException(
-                $"'{config.DestinationType.Name}' has no parameterless constructor. " +
-                "Use ConstructUsing() or ensure a public parameterless constructor exists.");
+            throw new MappingException($"'{config.DestinationType.Name}' has no parameterless constructor. Use ConstructUsing() or ensure a public parameterless constructor exists.", exception);
         }
     }
 
-    private static bool IsSimpleType(Type type) =>
-        type.IsPrimitive || type == typeof(string) || type == typeof(decimal) ||
-        type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(Guid) ||
-        type == typeof(TimeSpan) || type.IsEnum || Nullable.GetUnderlyingType(type) != null;
+    private static IEnumerable<PropertyInfo> GetWritableProperties(Type type)
+    {
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.CanWrite);
+    }
 
-    private static bool IsCollectionType(Type type) =>
-        type != typeof(string) &&
-        (type.IsArray || type.GetInterfaces().Any(i =>
-            i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)));
+    private static bool TryResolveFlattenedMember(Type sourceType, string destinationMemberName)
+    {
+        foreach (PropertyInfo property in sourceType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!destinationMemberName.StartsWith(property.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string remainingName = destinationMemberName[property.Name.Length..];
+            if (string.IsNullOrEmpty(remainingName))
+            {
+                return true;
+            }
+
+            if (TryResolveFlattenedMember(property.PropertyType, remainingName))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSimpleType(Type type)
+    {
+        return type.IsPrimitive
+            || type == typeof(string)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(Guid)
+            || type == typeof(TimeSpan)
+            || type.IsEnum
+            || Nullable.GetUnderlyingType(type) != null;
+    }
+
+    private static bool IsCollectionType(Type type)
+    {
+        return type != typeof(string)
+            && (type.IsArray || type.GetInterfaces().Any(interfaceType =>
+                interfaceType.IsGenericType && interfaceType.GetGenericTypeDefinition() == typeof(IEnumerable<>)));
+    }
 
     private static Type? GetCollectionElementType(Type collectionType)
     {
-        if (collectionType.IsArray) return collectionType.GetElementType();
+        if (collectionType.IsArray)
+        {
+            return collectionType.GetElementType();
+        }
+
         return collectionType.GetInterfaces()
-            .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            .FirstOrDefault(interfaceType => interfaceType.IsGenericType && interfaceType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             ?.GetGenericArguments()[0];
     }
 
     private static object CreateEmptyCollection(Type collectionType)
     {
-        if (collectionType.IsArray) return Array.CreateInstance(collectionType.GetElementType()!, 0);
-        var elementType = GetCollectionElementType(collectionType);
-        if (elementType == null) return new List<object>();
+        if (collectionType.IsArray)
+        {
+            return Array.CreateInstance(collectionType.GetElementType()!, 0);
+        }
+
+        Type? elementType = GetCollectionElementType(collectionType);
+        if (elementType == null)
+        {
+            return new List<object>();
+        }
+
         return Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
     }
 
@@ -444,19 +635,32 @@ public sealed class FlowRMapper : IMapper
     {
         if (collectionType.IsArray)
         {
-            var arr = Array.CreateInstance(elementType, items.Count);
-            for (int i = 0; i < items.Count; i++) arr.SetValue(items[i], i);
-            return arr;
+            Array array = Array.CreateInstance(elementType, items.Count);
+            for (int index = 0; index < items.Count; index++)
+            {
+                array.SetValue(items[index], index);
+            }
+
+            return array;
         }
 
-        var list = (System.Collections.IList)Activator.CreateInstance(
-            typeof(List<>).MakeGenericType(elementType))!;
-        foreach (var item in items) list.Add(item);
+        Type concreteCollectionType = collectionType.IsInterface || collectionType.IsAbstract
+            ? typeof(List<>).MakeGenericType(elementType)
+            : collectionType;
+
+        System.Collections.IList list = (System.Collections.IList)Activator.CreateInstance(concreteCollectionType)!;
+        foreach (object? item in items)
+        {
+            list.Add(item);
+        }
+
         return list;
     }
 
-    private bool IsGloballyIgnored(string memberName) =>
-        _registry.GlobalIgnorePredicates.Any(pred => pred(memberName));
+    private bool IsGloballyIgnored(string memberName)
+    {
+        return _registry.GlobalIgnorePredicates.Any(predicate => predicate(memberName));
+    }
 
     private static object? GetDefaultValue(Type type)
     {

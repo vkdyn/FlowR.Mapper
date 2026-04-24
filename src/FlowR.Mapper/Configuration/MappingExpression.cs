@@ -1,3 +1,4 @@
+using FlowR.Mapper;
 using FlowR.Mapper.Core;
 using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Internal;
@@ -281,6 +282,42 @@ internal sealed class MemberOptions<TSource, TDestination, TMember>
     public IMemberOptions<TSource, TDestination, TMember> Condition(Func<TSource, bool> condition)
     {
         _config.MemberConditions[_memberName] = condition;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> Condition(Func<TSource, TDestination, bool> condition)
+    {
+        _config.MemberConditions[_memberName] = condition;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> Condition(Func<TSource, TDestination, TMember?, TMember?, bool> condition)
+    {
+        _config.MemberConditions[_memberName] = condition;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> PreCondition(Func<TSource, bool> condition)
+    {
+        _config.MemberPreConditions[_memberName] = condition;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> PreCondition(Func<TSource, TDestination, bool> condition)
+    {
+        _config.MemberPreConditions[_memberName] = condition;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> PreCondition(Func<TSource, TDestination, ResolutionContext, bool> condition)
+    {
+        _config.MemberPreConditions[_memberName] = condition;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> AllowNull()
+    {
+        _config.AllowNullMembers.Add(_memberName);
         return this;
     }
 

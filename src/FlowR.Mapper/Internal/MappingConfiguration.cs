@@ -18,6 +18,10 @@ internal sealed class MappingConfiguration
     public HashSet<string> IgnoredMembers { get; } = new();
     // Conditional member mapping: dest member name -> condition
     public Dictionary<string, Delegate> MemberConditions { get; } = new();
+    // Member-level preconditions: evaluated before resolving the destination member.
+    public Dictionary<string, Delegate> MemberPreConditions { get; } = new();
+    // Members configured to allow null source values to overwrite destination values.
+    public HashSet<string> AllowNullMembers { get; } = new();
     // Constant member values
     public Dictionary<string, object?> MemberConstants { get; } = new();
     // Null substitutes per member

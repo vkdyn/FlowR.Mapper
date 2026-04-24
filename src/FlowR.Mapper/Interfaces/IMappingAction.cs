@@ -1,6 +1,6 @@
-using FlowR.Mapper.Core;
+using FlowR.Mapper;
 
-namespace FlowR.Mapper.Interfaces;
+namespace FlowR.Mapper;
 
 /// <summary>
 /// Defines a custom action that can be executed during mapping.

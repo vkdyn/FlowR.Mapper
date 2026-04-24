@@ -1,7 +1,7 @@
 using FlowR.Mapper.Interfaces;
 using System.Linq.Expressions;
 
-namespace FlowR.Mapper.Configuration;
+namespace FlowR.Mapper;
 
 /// <summary>
 /// Define your mappings by inheriting from <see cref="MapperProfile"/>.

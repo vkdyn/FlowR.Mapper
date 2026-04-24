@@ -1,8 +1,7 @@
-using FlowR.Mapper.Configuration;
-using FlowR.Mapper.Core;
+using FlowR.Mapper;
 using System.Linq.Expressions;
 
-namespace FlowR.Mapper.Interfaces;
+namespace FlowR.Mapper;
 
 /// <summary>
 /// Fluent API for configuring a mapping between TSource and TDestination.
@@ -214,6 +213,24 @@ public interface IMemberOptions<TSource, TDestination, TMember>
 
     /// <summary>Only maps if condition is true.</summary>
     IMemberOptions<TSource, TDestination, TMember> Condition(Func<TSource, bool> condition);
+
+    /// <summary>Only maps if condition is true, with destination access.</summary>
+    IMemberOptions<TSource, TDestination, TMember> Condition(Func<TSource, TDestination, bool> condition);
+
+    /// <summary>Only maps if condition is true, with source/destination member access.</summary>
+    IMemberOptions<TSource, TDestination, TMember> Condition(Func<TSource, TDestination, TMember?, TMember?, bool> condition);
+
+    /// <summary>Only maps if the precondition is true before resolving the source member.</summary>
+    IMemberOptions<TSource, TDestination, TMember> PreCondition(Func<TSource, bool> condition);
+
+    /// <summary>Only maps if the precondition is true before resolving the source member, with destination access.</summary>
+    IMemberOptions<TSource, TDestination, TMember> PreCondition(Func<TSource, TDestination, bool> condition);
+
+    /// <summary>Only maps if the precondition is true before resolving the source member, with context access.</summary>
+    IMemberOptions<TSource, TDestination, TMember> PreCondition(Func<TSource, TDestination, ResolutionContext, bool> condition);
+
+    /// <summary>Allows null source member values to overwrite destination values.</summary>
+    IMemberOptions<TSource, TDestination, TMember> AllowNull();
 
     /// <summary>Substitute value when source is null.</summary>
     IMemberOptions<TSource, TDestination, TMember> NullSubstitute(TMember value);

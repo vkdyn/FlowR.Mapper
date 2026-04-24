@@ -1,3 +1,4 @@
+using FlowR.Mapper;
 using FlowR.Mapper.Configuration;
 using FlowR.Mapper.Core;
 using FlowR.Mapper.Interfaces;
