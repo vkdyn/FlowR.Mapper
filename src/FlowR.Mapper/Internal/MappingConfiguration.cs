@@ -35,6 +35,24 @@ internal sealed class MappingConfiguration
     // ForAllMembers configuration action
     public Delegate? ForAllMembersAction { get; set; }
 
+    // ForAllOtherMembers configuration action
+    public Delegate? ForAllOtherMembersAction { get; set; }
+
+    // Path-based resolvers: "Address.City" -> resolver func
+    public Dictionary<string, Delegate> PathResolvers { get; } = new();
+
+    // Path constants: "Address.City" -> constant value
+    public Dictionary<string, object?> PathConstants { get; } = new();
+
+    // Value resolvers: member name -> IValueResolver instance
+    public Dictionary<string, object> ValueResolvers { get; } = new();
+
+    // Members that should use destination value instead of mapping
+    public HashSet<string> UseDestinationValueMembers { get; } = new();
+
+    // Member mapping order: member name -> order (lower = first)
+    public Dictionary<string, int> MemberMappingOrder { get; } = new();
+
     // Before/after hooks - using wrappers to support both 2-param and 3-param signatures
     public List<IMappingActionWrapper> BeforeMapActions { get; } = [];
     public List<IMappingActionWrapper> AfterMapActions { get; } = [];

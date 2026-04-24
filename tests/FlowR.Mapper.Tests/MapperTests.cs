@@ -5,7 +5,6 @@ using FlowR.Mapper.Extensions;
 using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Tests.Models;
 using Microsoft.Extensions.DependencyInjection;
-using System.Linq.Expressions;
 using Xunit;
 
 namespace FlowR.Mapper.Tests;
@@ -26,8 +25,8 @@ public class UserMappingProfile : MapperProfile
         cfg.CreateMap<OrderEntity, OrderDto>();
 
         cfg.CreateMap<UserEntity, UserDto>()
-            .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")))
-            .ForMember(d => d.Age, opt => opt.MapFrom((Expression<Func<UserEntity, int>>)(s => DateTime.Today.Year - s.DateOfBirth.Year)))
+            .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"))
+            .ForMember(d => d.Age, opt => opt.MapFrom(s => DateTime.Today.Year - s.DateOfBirth.Year))
             .DeepMap();
 
         cfg.CreateMap<UserEntity, UserFlatDto>()
@@ -292,7 +291,7 @@ public class MapperTests
             cfg.CreateMap<UserEntity, UserDto>()
                 .ForMember(d => d.Email, opt =>
                 {
-                    opt.MapFrom((Expression<Func<UserEntity, string>>)(s => s.Email));
+                    opt.MapFrom(s => s.Email);
                     opt.Condition(s => s.IsActive);
                 });
         });
@@ -523,12 +522,12 @@ public class MapperTests
         var mapper = BuildMapper(cfg =>
         {
             cfg.CreateMap<EntityBase, DtoBase>()
-                .ForMember(d => d.Id, opt => opt.MapFrom((Expression<Func<EntityBase, int>>)(s => s.Id)))
-                .ForMember(d => d.CreatedAt, opt => opt.MapFrom((Expression<Func<EntityBase, DateTime>>)(s => s.CreatedAt)));
+                .ForMember(d => d.Id, opt => opt.MapFrom(s => s.Id))
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.CreatedAt));
 
             cfg.CreateMap<DerivedEntity, DerivedDto>()
                 .IncludeBase<EntityBase, DtoBase>()
-                .ForMember(d => d.Name, opt => opt.MapFrom((Expression<Func<DerivedEntity, string>>)(s => s.Name)));
+                .ForMember(d => d.Name, opt => opt.MapFrom(s => s.Name));
         });
 
         var entity = new DerivedEntity
@@ -554,7 +553,7 @@ public class MapperTests
         {
             cfg.CreateMap<UserEntity, UserDto>()
                 .PreCondition(src => src.IsActive)
-                .ForMember(d => d.Email, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => s.Email)));
+                .ForMember(d => d.Email, opt => opt.MapFrom(s => s.Email));
         });
 
         var activeUser = new UserEntity { Email = "active@test.com", IsActive = true };
@@ -574,7 +573,7 @@ public class MapperTests
         {
             cfg.CreateMap<UserEntity, UserDto>()
                 .PreCondition((src, dest) => src.IsActive && dest != null)
-                .ForMember(d => d.Email, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => s.Email)));
+                .ForMember(d => d.Email, opt => opt.MapFrom(s => s.Email));
         });
 
         var user = new UserEntity { Email = "test@test.com", IsActive = true };

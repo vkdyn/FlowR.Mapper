@@ -171,6 +171,26 @@ public interface IMappingExpression<TSource, TDestination>
     /// By default, FlowR substitutes null source with default(TDestination).
     /// </summary>
     IMappingExpression<TSource, TDestination> AllowNull();
+
+    /// <summary>
+    /// Maps to a nested destination property path (e.g., d => d.Address.City).
+    /// </summary>
+    IMappingExpression<TSource, TDestination> ForPath<TMember>(
+        Expression<Func<TDestination, TMember>> destinationPath,
+        Action<IPathOptions<TSource, TDestination, TMember>> options);
+
+    /// <summary>
+    /// Applies configuration to all members that haven't been explicitly configured.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> ForAllOtherMembers(
+        Action<IMemberOptions<TSource, TDestination, object>> memberOptions);
+
+    /// <summary>
+    /// Sets the mapping order for a specific member. Lower values map first.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> SetMappingOrder(
+        Expression<Func<TDestination, object>> destinationMember,
+        int order);
 }
 
 /// <summary>
@@ -178,10 +198,6 @@ public interface IMappingExpression<TSource, TDestination>
 /// </summary>
 public interface IMemberOptions<TSource, TDestination, TMember>
 {
-    /// <summary>Maps from a source expression.</summary>
-    IMemberOptions<TSource, TDestination, TMember> MapFrom<TSourceMember>(
-        Expression<Func<TSource, TSourceMember>> sourceMember);
-
     /// <summary>Maps from a custom resolve function.</summary>
     IMemberOptions<TSource, TDestination, TMember> MapFrom(
         Func<TSource, TMember> resolver);
@@ -201,6 +217,28 @@ public interface IMemberOptions<TSource, TDestination, TMember>
 
     /// <summary>Substitute value when source is null.</summary>
     IMemberOptions<TSource, TDestination, TMember> NullSubstitute(TMember value);
+
+    /// <summary>
+    /// Uses a custom value resolver class for this member.
+    /// </summary>
+    IMemberOptions<TSource, TDestination, TMember> MapFrom<TResolver>()
+        where TResolver : IValueResolver<TSource, TDestination, TMember>, new();
+
+    /// <summary>
+    /// Uses a custom value resolver instance for this member.
+    /// </summary>
+    IMemberOptions<TSource, TDestination, TMember> MapFrom<TResolver>(TResolver resolver)
+        where TResolver : IValueResolver<TSource, TDestination, TMember>;
+
+    /// <summary>
+    /// Keeps the existing destination value instead of mapping from source.
+    /// </summary>
+    IMemberOptions<TSource, TDestination, TMember> UseDestinationValue();
+
+    /// <summary>
+    /// Sets the mapping order for this member. Lower values map first.
+    /// </summary>
+    IMemberOptions<TSource, TDestination, TMember> SetMappingOrder(int order);
 }
 
 /// <summary>
@@ -213,4 +251,17 @@ public interface ICollectionOptions
 
     /// <summary>Use a specific equality comparer when merging collections.</summary>
     ICollectionOptions UseEquality<TKey>(Func<object, TKey> keySelector);
+}
+
+/// <summary>
+/// Options for configuring a nested destination property path.
+/// </summary>
+public interface IPathOptions<TSource, TDestination, TMember>
+{
+    /// <summary>Maps from a custom resolve function.</summary>
+    IPathOptions<TSource, TDestination, TMember> MapFrom(
+        Func<TSource, TMember> resolver);
+
+    /// <summary>Sets a constant value.</summary>
+    IPathOptions<TSource, TDestination, TMember> UseValue(TMember value);
 }

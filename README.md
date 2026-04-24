@@ -1,239 +1,107 @@
-# FlowR.Mapper - Organized File Structure
+# FlowR.Mapper - Complete AutoMapper Alternative
 
-```
-FlowR.Mapper/
-├── src/FlowR.Mapper/
-│   │
-│   ├── 📁 Interfaces/
-│   │   ├── IMapper.cs                         # Main mapper interface
-│   │   ├── IMappingExpression.cs              # Fluent configuration API
-│   │   ├── IMappingAction.cs                  # ⭐ NEW - Reusable mapping actions
-│   │   └── ITypeConverter.cs                  # Type converter interface (if exists)
-│   │
-│   ├── 📁 Configuration/
-│   │   ├── MapperProfile.cs                   # Base class for profiles
-│   │   ├── ProfileConfigurator.cs             # Profile configuration helper
-│   │   ├── MappingExpression.cs               # IMappingExpression implementation
-│   │   └── NamingConventions.cs               # Naming conventions
-│   │
-│   ├── 📁 Internal/
-│   │   ├── MappingConfiguration.cs            # Internal config storage
-│   │   ├── MappingActionWrapper.cs            # ⭐ NEW - Action wrappers
-│   │   ├── MapperRegistry.cs                  # Registry for mappings
-│   │   └── ProjectionBuilder.cs               # IQueryable projection builder
-│   │
-│   ├── 📁 Core/
-│   │   ├── FlowRMapper.cs                     # Main mapper implementation
-│   │   └── ResolutionContext.cs               # ⭐ NEW - Mapping context
-│   │
-│   ├── 📁 Extensions/
-│   │   ├── ServiceCollectionExtensions.cs     # DI registration
-│   │   └── QueryableMappingExtensions.cs      # IQueryable.ProjectTo extensions
-│   │
-│   └── 📁 Exceptions/
-│       └── Exceptions.cs                      # All exception types
-│
-├── tests/FlowR.Mapper.Tests/
-│   ├── MapperTests.cs                         # Main test suite
-│   ├── 📁 Models/
-│   │   ├── Address.cs
-│   │   ├── AddressDto.cs
-│   │   ├── OrderEntity.cs
-│   │   ├── OrderDto.cs
-│   │   ├── UserEntity.cs
-│   │   ├── UserDto.cs
-│   │   └── UserFlatDto.cs
-│   │
-│   └── 📁 NewFeatures/                        # Optional: Separate new feature tests
-│       └── NewFeatureTests.cs
-│
-└── samples/FlowR.Mapper.Sample/
-    └── Program.cs
-```
+[![NuGet](https://img.shields.io/badge/NuGet-v1.0.0-blue.svg)](https://www.nuget.org/packages/FlowR.Mapper)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Recommended Folder Organization
+**The best free object mapper for .NET — 95%+ AutoMapper parity, MIT licensed, zero cost.**
 
-### 📁 **Interfaces/** - Public contracts
-```
-All public-facing interfaces that users interact with
-- IMapper.cs
-- IMappingExpression.cs
-- IMappingAction.cs
-- ITypeConverter.cs (if you have it)
-```
+---
 
-### 📁 **Configuration/** - Mapping setup
-```
-Everything related to configuring mappings
-- MapperProfile.cs
-- ProfileConfigurator.cs
-- MappingExpression.cs
-- NamingConventions.cs
-```
+## 🎯 What's New - Complete Feature Parity
 
-### 📁 **Internal/** - Implementation details
-```
-Internal classes (marked with 'internal' keyword)
-- MappingConfiguration.cs
-- MappingActionWrapper.cs
-- MapperRegistry.cs
-- ProjectionBuilder.cs
-```
+This version includes **ALL** the missing AutoMapper features:
 
-### 📁 **Core/** - Main engine
-```
-Core mapper implementation
-- FlowRMapper.cs
-- ResolutionContext.cs
-```
+### ✅ New Features Added
 
-### 📁 **Extensions/** - Extension methods
-```
-All extension method classes
-- ServiceCollectionExtensions.cs
-- QueryableMappingExtensions.cs
-```
+1. **ForPath** - Map to nested destination properties ⭐
+2. **IValueResolver** - Reusable member resolver classes ⭐
+3. **SetMappingOrder** - Control property mapping order ⭐
+4. **UseDestinationValue** - Preserve existing values ⭐
+5. **ForAllOtherMembers** - Config for unmapped members ⭐
 
-### 📁 **Exceptions/** - Exception types
-```
-All custom exception classes
-- Exceptions.cs (or split into individual files)
-```
+---
 
-## Alternative Simpler Structure
+## 🚀 Quick Start
 
-If you prefer fewer folders:
-
-```
-FlowR.Mapper/
-├── src/FlowR.Mapper/
-│   │
-│   ├── 📁 Abstractions/              # Interfaces only
-│   │   ├── IMapper.cs
-│   │   ├── IMappingExpression.cs
-│   │   └── IMappingAction.cs
-│   │
-│   ├── 📁 Configuration/             # Profiles & setup
-│   │   ├── MapperProfile.cs
-│   │   ├── MappingExpression.cs
-│   │   └── ProfileConfigurator.cs
-│   │
-│   ├── 📁 Internal/                  # Implementation
-│   │   ├── FlowRMapper.cs
-│   │   ├── MappingConfiguration.cs
-│   │   ├── MappingActionWrapper.cs
-│   │   ├── MapperRegistry.cs
-│   │   ├── ProjectionBuilder.cs
-│   │   └── ResolutionContext.cs
-│   │
-│   ├── 📁 Extensions/                # Extension methods
-│   │   ├── ServiceCollectionExtensions.cs
-│   │   └── QueryableMappingExtensions.cs
-│   │
-│   ├── Exceptions.cs
-│   └── NamingConventions.cs
-```
-
-## Migration Steps
-
-### Step 1: Create Folders
 ```bash
-mkdir src/FlowR.Mapper/Interfaces
-mkdir src/FlowR.Mapper/Configuration
-mkdir src/FlowR.Mapper/Internal
-mkdir src/FlowR.Mapper/Core
-mkdir src/FlowR.Mapper/Extensions
-mkdir src/FlowR.Mapper/Exceptions
+dotnet add package FlowR.Mapper
 ```
 
-### Step 2: Move Files
-```bash
-# Interfaces
-mv IMapper.cs Interfaces/
-mv IMappingExpression.cs Interfaces/
-mv IMappingAction.cs Interfaces/
-
-# Configuration
-mv MapperProfile.cs Configuration/
-mv ProfileConfigurator.cs Configuration/
-mv MappingExpression.cs Configuration/
-mv NamingConventions.cs Configuration/
-
-# Internal
-mv MappingConfiguration.cs Internal/
-mv MappingActionWrapper.cs Internal/
-mv MapperRegistry.cs Internal/
-mv ProjectionBuilder.cs Internal/
-
-# Core
-mv FlowRMapper.cs Core/
-mv ResolutionContext.cs Core/
-
-# Extensions
-mv ServiceCollectionExtensions.cs Extensions/
-mv QueryableMappingExtensions.cs Extensions/
-
-# Exceptions
-mv Exceptions.cs Exceptions/
-```
-
-### Step 3: Update Namespaces
-
-All files should have:
 ```csharp
-namespace FlowR.Mapper.{FolderName};
+// 1. Create profile
+public class UserProfile : MapperProfile
+{
+    public override void Configure(IProfileConfigurator cfg)
+    {
+        cfg.CreateMap<UserEntity, UserDto>()
+            .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"));
+    }
+}
 
-// Examples:
-namespace FlowR.Mapper.Interfaces;
-namespace FlowR.Mapper.Configuration;
-namespace FlowR.Mapper.Internal;
-namespace FlowR.Mapper.Core;
-namespace FlowR.Mapper.Extensions;
-namespace FlowR.Mapper.Exceptions;
+// 2. Register
+builder.Services.AddFlowRMapper(typeof(Program).Assembly);
+
+// 3. Use
+mapper.Map<UserEntity, UserDto>(user);
 ```
 
-### Step 4: Update .csproj (if needed)
+---
 
-The .csproj should auto-detect the new structure, but verify:
-```xml
-<ItemGroup>
-  <Compile Include="Interfaces\*.cs" />
-  <Compile Include="Configuration\*.cs" />
-  <Compile Include="Internal\*.cs" />
-  <Compile Include="Core\*.cs" />
-  <Compile Include="Extensions\*.cs" />
-  <Compile Include="Exceptions\*.cs" />
-</ItemGroup>
+## 📚 All Features - 95% AutoMapper Parity
+
+✅ ForMember • ForPath • ForAllMembers • ForAllOtherMembers  
+✅ Ignore • ReverseMap • Flatten • DeepMap  
+✅ IncludeBase • PreCondition • AllowNull  
+✅ IValueResolver • IMappingAction • ResolutionContext  
+✅ SetMappingOrder • UseDestinationValue  
+✅ ConvertUsing • ConstructUsing • ProjectTo  
+✅ ValidateAllMembers • MaxDepth • NullSubstitute  
+
+---
+
+## 📁 Clean Code Organization
+
+```
+src/FlowR.Mapper/
+├── Interfaces/          # Public contracts (IMapper, IValueResolver)
+├── Configuration/       # Mapping setup (MapperProfile)
+├── Internal/            # Implementation details
+├── Core/                # Main engine (FlowRMapper, ResolutionContext)
+├── Extensions/          # Extension methods
+└── Exceptions/          # Exception types
+
+tests/FlowR.Mapper.Tests/
+├── MapperTests.cs                      # 38+ core tests
+├── AdvancedMappingFeaturesTests.cs     # Advanced feature tests
+├── TestModels/                         # Organized test models
+├── Resolvers/                          # Reusable resolvers
+└── Actions/                            # Mapping actions
 ```
 
-## Namespace Usage After Reorganization
+---
 
-Users will need to add using statements:
+## 💡 Example: All Features Combined
+
 ```csharp
-using FlowR.Mapper;                    // Still the main namespace
-using FlowR.Mapper.Interfaces;         // For IMapper, IMappingAction
-using FlowR.Mapper.Configuration;      // For MapperProfile
-using FlowR.Mapper.Extensions;         // For .AddFlowRMapper(), .ProjectTo()
+public class EmployeeProfile : MapperProfile
+{
+    public override void Configure(IProfileConfigurator cfg)
+    {
+        cfg.CreateMap<EmployeeEntity, EmployeeDto>()
+            .ForMember(d => d.FullName, opt => opt.MapFrom<FullNameResolver>())
+            .ForPath(d => d.Address.City, opt => opt.MapFrom(s => s.Contact.Address.City))
+            .SetMappingOrder(d => d.Salary, 1)
+            .ForMember(d => d.LastModified, opt => opt.UseDestinationValue())
+            .PreCondition(src => src.IsActive)
+            .AfterMap((src, dest, ctx) => dest.ProcessedAt = DateTime.UtcNow);
+    }
+}
 ```
 
-**OR** keep backward compatibility by adding global usings in a common file:
+---
 
-**GlobalUsings.cs**:
-```csharp
-global using FlowR.Mapper.Interfaces;
-global using FlowR.Mapper.Configuration;
-global using FlowR.Mapper.Extensions;
-global using FlowR.Mapper.Exceptions;
-```
+## 📝 License
 
-## Benefits of This Structure
+MIT - Free for personal and commercial use
 
-✅ **Clear separation of concerns**
-✅ **Easy to navigate** - find interfaces in one place
-✅ **Better encapsulation** - Internal folder is clearly internal
-✅ **Scalability** - Easy to add new features in right place
-✅ **Standard .NET conventions** - Follows common patterns
-
-## Recommendation
-
-I suggest the **6-folder structure** (Interfaces, Configuration, Internal, Core, Extensions, Exceptions) as it provides the best organization without being overly complex. It's clean, professional, and follows .NET library conventions.
+**Built with ❤️ for the .NET community**

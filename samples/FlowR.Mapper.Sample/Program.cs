@@ -3,7 +3,6 @@ using FlowR.Mapper.Core;
 using FlowR.Mapper.Extensions;
 using FlowR.Mapper.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
-using System.Linq.Expressions;
 
 // ============================================================
 // FlowR.Mapper Sample — demonstrates full API surface
@@ -105,7 +104,7 @@ servicesForAll.AddFlowRMapper(cfg =>
 {
     cfg.CreateMap<UserEntity, UserDto>()
         .ForAllMembers(opt => opt.Condition(src => src != null))
-        .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")));
+        .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"));
 });
 var forAllMapper = servicesForAll.BuildServiceProvider().GetRequiredService<IMapper>();
 var forAllDto = forAllMapper.Map<UserEntity, UserDto>(userEntity);
@@ -118,7 +117,7 @@ servicesPreCond.AddFlowRMapper(cfg =>
 {
     cfg.CreateMap<UserEntity, UserDto>()
         .PreCondition(src => src.IsActive)
-        .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")));
+        .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"));
 });
 var preCondMapper = servicesPreCond.BuildServiceProvider().GetRequiredService<IMapper>();
 var activeUser = new UserEntity { FirstName = "Active", LastName = "User", IsActive = true };
@@ -229,8 +228,8 @@ public class ECommerceProfile : MapperProfile
         cfg.CreateMap<OrderEntity, OrderDto>();
 
         cfg.CreateMap<UserEntity, UserDto>()
-            .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")))
-            .ForMember(d => d.Age, opt => opt.MapFrom((Expression<Func<UserEntity, int>>)(s => DateTime.Today.Year - s.DateOfBirth.Year)))
+            .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"))
+            .ForMember(d => d.Age, opt => opt.MapFrom(s => DateTime.Today.Year - s.DateOfBirth.Year))
             .DeepMap();
 
         cfg.CreateMap<UserEntity, UserFlatDto>()

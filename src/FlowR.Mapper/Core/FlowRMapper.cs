@@ -205,10 +205,30 @@ public sealed class FlowRMapper : IMapper
             .Where(p => p.CanWrite)
             .ToList();
 
+        // Sort by mapping order if specified
+        if (config.MemberMappingOrder.Count > 0)
+        {
+            destProps = destProps
+                .OrderBy(p => config.MemberMappingOrder.TryGetValue(p.Name, out var order) ? order : int.MaxValue)
+                .ToList();
+        }
+
+        // Track which members have been explicitly configured
+        var configuredMembers = new HashSet<string>(
+            config.MemberResolvers.Keys
+            .Concat(config.MemberConstants.Keys)
+            .Concat(config.IgnoredMembers)
+            .Concat(config.ValueResolvers.Keys)
+            .Concat(config.PathResolvers.Keys.Select(p => p.Split('.')[0]))
+        );
+
         foreach (var destProp in destProps)
         {
             if (config.IgnoredMembers.Contains(destProp.Name)) continue;
             if (IsGloballyIgnored(destProp.Name)) continue;
+
+            // UseDestinationValue - skip mapping for this member
+            if (config.UseDestinationValueMembers.Contains(destProp.Name)) continue;
 
             // Check member-level condition
             if (config.MemberConditions.TryGetValue(destProp.Name, out var memberCond))
@@ -226,7 +246,19 @@ public sealed class FlowRMapper : IMapper
                 value = constant;
                 resolved = true;
             }
-            // Priority 2: Custom resolver
+            // Priority 2: Value resolver (IValueResolver)
+            else if (config.ValueResolvers.TryGetValue(destProp.Name, out var valueResolver))
+            {
+                var resolverType = valueResolver.GetType();
+                var resolveMethod = resolverType.GetMethod("Resolve");
+                var currentValue = destProp.GetValue(dest);
+                
+                var context = new ResolutionContext(source, dest, sourceType, destType, this);
+                context.Depth = depth;
+                value = resolveMethod!.Invoke(valueResolver, new[] { source, dest, currentValue, context });
+                resolved = true;
+            }
+            // Priority 3: Custom resolver
             else if (config.MemberResolvers.TryGetValue(destProp.Name, out var resolver))
             {
                 value = resolver.DynamicInvoke(resolver.Method.GetParameters().Length == 2
@@ -282,6 +314,40 @@ public sealed class FlowRMapper : IMapper
                     $"Error setting '{destProp.Name}' on '{destType.Name}': {ex.Message}", ex);
             }
         }
+
+        // Handle path-based mappings (ForPath)
+        foreach (var pathMapping in config.PathResolvers)
+        {
+            SetNestedProperty(dest, pathMapping.Key, pathMapping.Value.DynamicInvoke(source));
+        }
+
+        foreach (var pathConstant in config.PathConstants)
+        {
+            SetNestedProperty(dest, pathConstant.Key, pathConstant.Value);
+        }
+    }
+
+    private void SetNestedProperty(object obj, string path, object? value)
+    {
+        var parts = path.Split('.');
+        object current = obj;
+        
+        for (int i = 0; i < parts.Length - 1; i++)
+        {
+            var prop = current.GetType().GetProperty(parts[i]);
+            if (prop == null) return;
+            
+            var nextValue = prop.GetValue(current);
+            if (nextValue == null)
+            {
+                nextValue = Activator.CreateInstance(prop.PropertyType);
+                prop.SetValue(current, nextValue);
+            }
+            current = nextValue!;
+        }
+        
+        var finalProp = current.GetType().GetProperty(parts[^1]);
+        finalProp?.SetValue(current, value);
     }
 
     private object? TryGetFlattenedValue(object source,

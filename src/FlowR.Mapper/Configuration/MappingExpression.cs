@@ -194,6 +194,46 @@ internal sealed class MappingExpression<TSource, TDestination> : IMappingExpress
         return this;
     }
 
+    public IMappingExpression<TSource, TDestination> ForPath<TMember>(
+        Expression<Func<TDestination, TMember>> destinationPath,
+        Action<IPathOptions<TSource, TDestination, TMember>> options)
+    {
+        var pathString = GetPropertyPath(destinationPath);
+        var pathOptions = new PathOptions<TSource, TDestination, TMember>(pathString, _config);
+        options(pathOptions);
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> ForAllOtherMembers(
+        Action<IMemberOptions<TSource, TDestination, object>> memberOptions)
+    {
+        _config.ForAllOtherMembersAction = memberOptions;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> SetMappingOrder(
+        Expression<Func<TDestination, object>> destinationMember,
+        int order)
+    {
+        var memberName = GetMemberName(destinationMember);
+        _config.MemberMappingOrder[memberName] = order;
+        return this;
+    }
+
+    private static string GetPropertyPath<T, TMember>(Expression<Func<T, TMember>> expression)
+    {
+        var parts = new List<string>();
+        var current = expression.Body;
+        
+        while (current is MemberExpression member)
+        {
+            parts.Insert(0, member.Member.Name);
+            current = member.Expression;
+        }
+        
+        return string.Join(".", parts);
+    }
+
     private static string GetMemberName<T, TMember>(Expression<Func<T, TMember>> expression)
     {
         if (expression.Body is MemberExpression member)
@@ -212,14 +252,6 @@ internal sealed class MemberOptions<TSource, TDestination, TMember>
     {
         _memberName = memberName;
         _config = config;
-    }
-
-    public IMemberOptions<TSource, TDestination, TMember> MapFrom<TSourceMember>(
-        Expression<Func<TSource, TSourceMember>> sourceMember)
-    {
-        var compiled = sourceMember.Compile();
-        _config.MemberResolvers[_memberName] = (Func<TSource, TMember>)(s => (TMember)(object)compiled(s)!);
-        return this;
     }
 
     public IMemberOptions<TSource, TDestination, TMember> MapFrom(Func<TSource, TMember> resolver)
@@ -255,6 +287,58 @@ internal sealed class MemberOptions<TSource, TDestination, TMember>
     public IMemberOptions<TSource, TDestination, TMember> NullSubstitute(TMember value)
     {
         _config.MemberNullSubstitutes[_memberName] = value;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> MapFrom<TResolver>()
+        where TResolver : IValueResolver<TSource, TDestination, TMember>, new()
+    {
+        var resolver = new TResolver();
+        return MapFrom(resolver);
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> MapFrom<TResolver>(TResolver resolver)
+        where TResolver : IValueResolver<TSource, TDestination, TMember>
+    {
+        _config.ValueResolvers[_memberName] = resolver;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> UseDestinationValue()
+    {
+        _config.UseDestinationValueMembers.Add(_memberName);
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> SetMappingOrder(int order)
+    {
+        _config.MemberMappingOrder[_memberName] = order;
+        return this;
+    }
+}
+
+// PathOptions implementation
+internal sealed class PathOptions<TSource, TDestination, TMember>
+    : IPathOptions<TSource, TDestination, TMember>
+{
+    private readonly string _path;
+    private readonly MappingConfiguration _config;
+
+    public PathOptions(string path, MappingConfiguration config)
+    {
+        _path = path;
+        _config = config;
+    }
+
+    public IPathOptions<TSource, TDestination, TMember> MapFrom(Func<TSource, TMember> resolver)
+    {
+        _config.PathResolvers[_path] = resolver;
+        return this;
+    }
+
+    public IPathOptions<TSource, TDestination, TMember> UseValue(TMember value)
+    {
+        _config.PathConstants[_path] = value;
         return this;
     }
 }
