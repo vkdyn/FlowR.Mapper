@@ -3,11 +3,9 @@ name: Build, Test, and Publish to NuGet
 on:
   push:
     branches: [ main, master ]
-    tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.0.0
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 env:
   DOTNET_VERSION: '8.0.x'
@@ -17,34 +15,32 @@ env:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for GitVersion
-    
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-    
+
     - name: Restore dependencies
       run: dotnet restore
-    
+
     - name: Build
       run: dotnet build --configuration Release --no-restore
-    
+
     - name: Test
-      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
-    
+      run: dotnet test ${{ env.TEST_PROJECT_PATH }} --configuration Release --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: '**/TestResults/**/*.trx'
-    
+
     - name: Upload coverage reports
       if: always()
       uses: actions/upload-artifact@v4
@@ -52,106 +48,87 @@ jobs:
         name: coverage-reports
         path: '**/TestResults/**/coverage.cobertura.xml'
 
-  publish-nuget:
+  publish-prerelease:
     needs: build-and-test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    
+    if: github.event_name == 'pull_request'
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-    
-    - name: Extract version from tag
-      id: get_version
+
+    - name: Generate pre-release version
+      id: get_prerelease_version
       run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
-        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-        echo "Extracted version: $VERSION"
-    
-    - name: Update project version
-      run: |
-        VERSION=${{ steps.get_version.outputs.VERSION }}
-        sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|" ${{ env.PROJECT_PATH }}
-        cat ${{ env.PROJECT_PATH }} | grep "<Version>"
-    
+        BASE_VERSION=$(grep '<Version>' ${{ env.PROJECT_PATH }} | sed 's/.*<Version>\(.*\)<\/Version>/\1/')
+        PR_NUMBER=${{ github.event.pull_request.number }}
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        PRERELEASE_VERSION="${BASE_VERSION}-pr.${PR_NUMBER}.${SHORT_SHA}"
+        echo "VERSION=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
+        echo "Pre-release version: $PRERELEASE_VERSION"
+
     - name: Restore dependencies
       run: dotnet restore
-    
+
+    - name: Build Release
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore -p:Version=${{ steps.get_prerelease_version.outputs.VERSION }}
+
+    - name: Pack pre-release NuGet package
+      run: dotnet pack ${{ env.PROJECT_PATH }} --configuration Release --no-build --output ./artifacts -p:PackageVersion=${{ steps.get_prerelease_version.outputs.VERSION }}
+
+    - name: Push pre-release to NuGet
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  publish-nuget:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Read package version
+      id: get_version
+      run: |
+        VERSION=$(grep '<Version>' ${{ env.PROJECT_PATH }} | sed 's/.*<Version>\(.*\)<\/Version>/\1/')
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Package version: $VERSION"
+
+    - name: Restore dependencies
+      run: dotnet restore
+
     - name: Build Release
       run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
-    
+
     - name: Pack NuGet package
       run: dotnet pack ${{ env.PROJECT_PATH }} --configuration Release --no-build --output ./artifacts
-    
-    - name: List artifacts
-      run: ls -la ./artifacts
-    
+
     - name: Push to NuGet
       run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
       env:
         NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-    
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        name: Release ${{ steps.get_version.outputs.VERSION }}
         files: ./artifacts/*.nupkg
         generate_release_notes: true
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Optional: Publish pre-release on main/master push
-  publish-prerelease:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && !startsWith(github.ref, 'refs/tags/')
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    
-    - name: Generate pre-release version
-      id: get_prerelease_version
-      run: |
-        # Get the base version from csproj
-        BASE_VERSION=$(grep '<Version>' ${{ env.PROJECT_PATH }} | sed 's/.*<Version>\(.*\)<\/Version>/\1/')
-        # Generate pre-release version with commit SHA
-        SHORT_SHA=$(git rev-parse --short HEAD)
-        PRERELEASE_VERSION="${BASE_VERSION}-alpha.${SHORT_SHA}"
-        echo "VERSION=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
-        echo "Pre-release version: $PRERELEASE_VERSION"
-    
-    - name: Update project version
-      run: |
-        VERSION=${{ steps.get_prerelease_version.outputs.VERSION }}
-        sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|" ${{ env.PROJECT_PATH }}
-        cat ${{ env.PROJECT_PATH }} | grep "<Version>"
-    
-    - name: Restore dependencies
-      run: dotnet restore
-    
-    - name: Build Release
-      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
-    
-    - name: Pack pre-release NuGet package
-      run: dotnet pack ${{ env.PROJECT_PATH }} --configuration Release --no-build --output ./artifacts
-    
-    - name: Push pre-release to NuGet
-      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-      env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
