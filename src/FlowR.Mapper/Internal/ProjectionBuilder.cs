@@ -1,8 +1,7 @@
-using FlowR.Mapper.Internal;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Internal;
 
 /// <summary>
 /// Builds LINQ projection expressions for use with IQueryable (EF Core, Dapper, etc.)

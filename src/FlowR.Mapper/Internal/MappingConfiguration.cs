@@ -1,3 +1,4 @@
+using FlowR.Mapper.Interfaces;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -17,6 +18,10 @@ internal sealed class MappingConfiguration
     public HashSet<string> IgnoredMembers { get; } = new();
     // Conditional member mapping: dest member name -> condition
     public Dictionary<string, Delegate> MemberConditions { get; } = new();
+    // Member-level preconditions: evaluated before resolving the destination member.
+    public Dictionary<string, Delegate> MemberPreConditions { get; } = new();
+    // Members configured to allow null source values to overwrite destination values.
+    public HashSet<string> AllowNullMembers { get; } = new();
     // Constant member values
     public Dictionary<string, object?> MemberConstants { get; } = new();
     // Null substitutes per member
@@ -25,9 +30,36 @@ internal sealed class MappingConfiguration
     // Global condition on the whole mapping
     public Delegate? GlobalCondition { get; set; }
 
-    // Before/after hooks
-    public List<Delegate> BeforeMapActions { get; } = [];
-    public List<Delegate> AfterMapActions { get; } = [];
+    // PreCondition - must be satisfied before mapping begins
+    public Delegate? PreCondition { get; set; }
+
+    // Allow null source values (don't substitute with default)
+    public bool AllowNullSource { get; set; }
+
+    // ForAllMembers configuration action
+    public Delegate? ForAllMembersAction { get; set; }
+
+    // ForAllOtherMembers configuration action
+    public Delegate? ForAllOtherMembersAction { get; set; }
+
+    // Path-based resolvers: "Address.City" -> resolver func
+    public Dictionary<string, Delegate> PathResolvers { get; } = new();
+
+    // Path constants: "Address.City" -> constant value
+    public Dictionary<string, object?> PathConstants { get; } = new();
+
+    // Value resolvers: member name -> IValueResolver instance
+    public Dictionary<string, object> ValueResolvers { get; } = new();
+
+    // Members that should use destination value instead of mapping
+    public HashSet<string> UseDestinationValueMembers { get; } = new();
+
+    // Member mapping order: member name -> order (lower = first)
+    public Dictionary<string, int> MemberMappingOrder { get; } = new();
+
+    // Before/after hooks - using wrappers to support both 2-param and 3-param signatures
+    public List<IMappingActionWrapper> BeforeMapActions { get; } = [];
+    public List<IMappingActionWrapper> AfterMapActions { get; } = [];
 
     // Custom constructor
     public Delegate? CustomConstructor { get; set; }
@@ -42,6 +74,9 @@ internal sealed class MappingConfiguration
 
     // Derived type mappings: (derivedSource, derivedDest)
     public List<(Type DerivedSource, Type DerivedDest)> DerivedTypeMappings { get; } = [];
+
+    // Base type mappings: (baseSource, baseDest) - for IncludeBase
+    public List<(Type BaseSource, Type BaseDest)> BaseTypeMappings { get; } = [];
 
     // Custom type converter (overrides all member mapping)
     public Delegate? TypeConverter { get; set; }

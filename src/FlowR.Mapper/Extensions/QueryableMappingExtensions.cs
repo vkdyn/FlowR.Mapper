@@ -1,5 +1,6 @@
 ﻿namespace FlowR.Mapper;
 
+using FlowR.Mapper;
 using System.Linq;
 
 /// <summary>

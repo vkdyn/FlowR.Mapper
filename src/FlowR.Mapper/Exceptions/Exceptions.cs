@@ -1,4 +1,4 @@
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Exceptions;
 
 /// <summary>
 /// Thrown when no mapping is registered between two types.

@@ -1,6 +1,8 @@
+using FlowR.Mapper;
+using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Internal;
 
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Configuration;
 
 internal sealed class ProfileConfigurator : IProfileConfigurator
 {

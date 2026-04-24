@@ -1,7 +1,7 @@
 ﻿namespace FlowR.Mapper.Tests;
 
-using FlowR.Mapper;
 using FlowR.Mapper.Extensions;
+using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Tests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
