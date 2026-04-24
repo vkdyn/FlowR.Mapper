@@ -1,8 +1,10 @@
+using FlowR.Mapper.Core;
+using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Internal;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Configuration;
 
 internal sealed class MappingExpression<TSource, TDestination> : IMappingExpression<TSource, TDestination>
 {
@@ -46,13 +48,33 @@ internal sealed class MappingExpression<TSource, TDestination> : IMappingExpress
 
     public IMappingExpression<TSource, TDestination> BeforeMap(Action<TSource, TDestination> action)
     {
-        _config.BeforeMapActions.Add(action);
+        _config.BeforeMapActions.Add(new MappingActionWrapper<TSource, TDestination>(action));
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> BeforeMap(IMappingAction<TSource, TDestination> action)
+    {
+        _config.BeforeMapActions.Add(new MappingActionWithContextWrapper<TSource, TDestination>(
+            (src, dest, ctx) => action.Process(src, dest, ctx)));
         return this;
     }
 
     public IMappingExpression<TSource, TDestination> AfterMap(Action<TSource, TDestination> action)
     {
-        _config.AfterMapActions.Add(action);
+        _config.AfterMapActions.Add(new MappingActionWrapper<TSource, TDestination>(action));
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> AfterMap(Action<TSource, TDestination, ResolutionContext> action)
+    {
+        _config.AfterMapActions.Add(new MappingActionWithContextWrapper<TSource, TDestination>(action));
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> AfterMap(IMappingAction<TSource, TDestination> action)
+    {
+        _config.AfterMapActions.Add(new MappingActionWithContextWrapper<TSource, TDestination>(
+            (src, dest, ctx) => action.Process(src, dest, ctx)));
         return this;
     }
 
@@ -101,6 +123,18 @@ internal sealed class MappingExpression<TSource, TDestination> : IMappingExpress
         return this;
     }
 
+    public IMappingExpression<TSource, TDestination> ConvertUsing(Func<TSource, TDestination> converter)
+    {
+        _config.TypeConverter = converter;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> ConvertUsing(Func<TSource, TDestination, TDestination> converter)
+    {
+        _config.TypeConverter = converter;
+        return this;
+    }
+
     public IMappingExpression<TSource, TDestination> Include<TDerivedSource, TDerivedDestination>()
         where TDerivedSource : TSource
         where TDerivedDestination : TDestination
@@ -118,6 +152,45 @@ internal sealed class MappingExpression<TSource, TDestination> : IMappingExpress
     public IMappingExpression<TSource, TDestination> MaxDepth(int depth)
     {
         _config.MaxDepth = depth;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> ForAllMembers(
+        Action<IMemberOptions<TSource, TDestination, object>> memberOptions)
+    {
+        _config.ForAllMembersAction = memberOptions;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> IncludeBase<TBaseSource, TBaseDestination>()
+        where TBaseSource : class
+        where TBaseDestination : class
+    {
+        _config.BaseTypeMappings.Add((typeof(TBaseSource), typeof(TBaseDestination)));
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> PreCondition(Func<TSource, bool> condition)
+    {
+        _config.PreCondition = condition;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> PreCondition(Func<TSource, TDestination, bool> condition)
+    {
+        _config.PreCondition = condition;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> PreCondition(Func<ResolutionContext, bool> condition)
+    {
+        _config.PreCondition = condition;
+        return this;
+    }
+
+    public IMappingExpression<TSource, TDestination> AllowNull()
+    {
+        _config.AllowNullSource = true;
         return this;
     }
 

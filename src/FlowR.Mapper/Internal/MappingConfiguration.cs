@@ -1,3 +1,4 @@
+using FlowR.Mapper.Interfaces;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -25,9 +26,18 @@ internal sealed class MappingConfiguration
     // Global condition on the whole mapping
     public Delegate? GlobalCondition { get; set; }
 
-    // Before/after hooks
-    public List<Delegate> BeforeMapActions { get; } = [];
-    public List<Delegate> AfterMapActions { get; } = [];
+    // PreCondition - must be satisfied before mapping begins
+    public Delegate? PreCondition { get; set; }
+
+    // Allow null source values (don't substitute with default)
+    public bool AllowNullSource { get; set; }
+
+    // ForAllMembers configuration action
+    public Delegate? ForAllMembersAction { get; set; }
+
+    // Before/after hooks - using wrappers to support both 2-param and 3-param signatures
+    public List<IMappingActionWrapper> BeforeMapActions { get; } = [];
+    public List<IMappingActionWrapper> AfterMapActions { get; } = [];
 
     // Custom constructor
     public Delegate? CustomConstructor { get; set; }
@@ -42,6 +52,9 @@ internal sealed class MappingConfiguration
 
     // Derived type mappings: (derivedSource, derivedDest)
     public List<(Type DerivedSource, Type DerivedDest)> DerivedTypeMappings { get; } = [];
+
+    // Base type mappings: (baseSource, baseDest) - for IncludeBase
+    public List<(Type BaseSource, Type BaseDest)> BaseTypeMappings { get; } = [];
 
     // Custom type converter (overrides all member mapping)
     public Delegate? TypeConverter { get; set; }

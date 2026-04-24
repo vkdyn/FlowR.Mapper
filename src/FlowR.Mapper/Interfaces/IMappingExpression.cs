@@ -1,6 +1,8 @@
+using FlowR.Mapper.Configuration;
+using FlowR.Mapper.Core;
 using System.Linq.Expressions;
 
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Interfaces;
 
 /// <summary>
 /// Fluent API for configuring a mapping between TSource and TDestination.
@@ -39,10 +41,28 @@ public interface IMappingExpression<TSource, TDestination>
         Action<TSource, TDestination> action);
 
     /// <summary>
+    /// Called before the mapping runs using a custom mapping action.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> BeforeMap(
+        IMappingAction<TSource, TDestination> action);
+
+    /// <summary>
     /// Called after the mapping runs.
     /// </summary>
     IMappingExpression<TSource, TDestination> AfterMap(
         Action<TSource, TDestination> action);
+
+    /// <summary>
+    /// Called after the mapping runs with context support.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> AfterMap(
+        Action<TSource, TDestination, ResolutionContext> action);
+
+    /// <summary>
+    /// Called after the mapping runs using a custom mapping action.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> AfterMap(
+        IMappingAction<TSource, TDestination> action);
 
     /// <summary>
     /// Maps to the destination using a constructor.
@@ -86,6 +106,18 @@ public interface IMappingExpression<TSource, TDestination>
         ITypeConverter<TSource, TDestination> converter);
 
     /// <summary>
+    /// Registers a custom conversion function for this mapping pair.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> ConvertUsing(
+        Func<TSource, TDestination> converter);
+
+    /// <summary>
+    /// Registers a custom conversion function with destination context for this mapping pair.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> ConvertUsing(
+        Func<TSource, TDestination, TDestination> converter);
+
+    /// <summary>
     /// Includes derived type mapping. Useful for polymorphism.
     /// </summary>
     IMappingExpression<TSource, TDestination> Include<TDerivedSource, TDerivedDestination>()
@@ -101,6 +133,44 @@ public interface IMappingExpression<TSource, TDestination>
     /// Maximum depth for recursive/circular reference mapping. Default: 5.
     /// </summary>
     IMappingExpression<TSource, TDestination> MaxDepth(int depth);
+
+    /// <summary>
+    /// Applies configuration to all destination members at once.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> ForAllMembers(
+        Action<IMemberOptions<TSource, TDestination, object>> memberOptions);
+
+    /// <summary>
+    /// Includes the base type mapping configuration in this derived mapping.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> IncludeBase<TBaseSource, TBaseDestination>()
+        where TBaseSource : class
+        where TBaseDestination : class;
+
+    /// <summary>
+    /// Specifies a precondition that must be satisfied before mapping occurs.
+    /// If the precondition fails, the mapping is skipped.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> PreCondition(
+        Func<TSource, bool> condition);
+
+    /// <summary>
+    /// Specifies a precondition with destination context.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> PreCondition(
+        Func<TSource, TDestination, bool> condition);
+
+    /// <summary>
+    /// Specifies a precondition with full resolution context.
+    /// </summary>
+    IMappingExpression<TSource, TDestination> PreCondition(
+        Func<ResolutionContext, bool> condition);
+
+    /// <summary>
+    /// Allows null values to propagate through the mapping.
+    /// By default, FlowR substitutes null source with default(TDestination).
+    /// </summary>
+    IMappingExpression<TSource, TDestination> AllowNull();
 }
 
 /// <summary>

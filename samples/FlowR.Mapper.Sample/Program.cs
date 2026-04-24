@@ -1,5 +1,7 @@
-using FlowR.Mapper;
+using FlowR.Mapper.Configuration;
+using FlowR.Mapper.Core;
 using FlowR.Mapper.Extensions;
+using FlowR.Mapper.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq.Expressions;
 
@@ -23,7 +25,9 @@ Console.WriteLine("=== FlowR.Mapper Sample ===\n");
 Console.WriteLine("--- 1. Basic Mapping ---");
 var userEntity = new UserEntity
 {
-    Id = 1, FirstName = "Krish", LastName = "Dev",
+    Id = 1,
+    FirstName = "Krish",
+    LastName = "Dev",
     Email = "krish@flowr.dev",
     DateOfBirth = new DateTime(1990, 5, 15),
     IsActive = true,
@@ -62,7 +66,10 @@ Console.WriteLine($"Product: {productDto.Name} | Price: ${productDto.Price} | Ca
 Console.WriteLine("--- 5. Deep Mapping ---");
 var userWithOrders = new UserEntity
 {
-    Id = 2, FirstName = "Alice", LastName = "Smith", Email = "alice@flowr.dev",
+    Id = 2,
+    FirstName = "Alice",
+    LastName = "Smith",
+    Email = "alice@flowr.dev",
     DateOfBirth = new DateTime(1985, 3, 10),
     Address = new Address { City = "Wellington", Street = "99 Harbor Rd", PostCode = "6011" },
     Orders = [new() { OrderId = 10, Total = 500m, Status = "Processing" }]
@@ -84,6 +91,95 @@ Console.WriteLine($"UserEntity -> UserDto: {mapper.HasMapping<UserEntity, UserDt
 Console.WriteLine($"UserEntity -> ProductDto: {mapper.HasMapping<UserEntity, ProductDto>()}");
 
 Console.WriteLine("\n=== Done! ===");
+
+// ============================================================
+// NEW FEATURES EXAMPLES
+// ============================================================
+
+Console.WriteLine("\n\n=== NEW FEATURES ===\n");
+
+// ---- 8. ForAllMembers ----
+Console.WriteLine("--- 8. ForAllMembers ---");
+var servicesForAll = new ServiceCollection();
+servicesForAll.AddFlowRMapper(cfg =>
+{
+    cfg.CreateMap<UserEntity, UserDto>()
+        .ForAllMembers(opt => opt.Condition(src => src != null))
+        .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")));
+});
+var forAllMapper = servicesForAll.BuildServiceProvider().GetRequiredService<IMapper>();
+var forAllDto = forAllMapper.Map<UserEntity, UserDto>(userEntity);
+Console.WriteLine($"ForAllMembers applied: {forAllDto.FullName}\n");
+
+// ---- 9. PreCondition ----
+Console.WriteLine("--- 9. PreCondition ---");
+var servicesPreCond = new ServiceCollection();
+servicesPreCond.AddFlowRMapper(cfg =>
+{
+    cfg.CreateMap<UserEntity, UserDto>()
+        .PreCondition(src => src.IsActive)
+        .ForMember(d => d.FullName, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => $"{s.FirstName} {s.LastName}")));
+});
+var preCondMapper = servicesPreCond.BuildServiceProvider().GetRequiredService<IMapper>();
+var activeUser = new UserEntity { FirstName = "Active", LastName = "User", IsActive = true };
+var inactiveUser = new UserEntity { FirstName = "Inactive", LastName = "User", IsActive = false };
+var activeResult = preCondMapper.Map<UserEntity, UserDto>(activeUser);
+Console.WriteLine($"Active user mapped: {activeResult.FullName}");
+Console.WriteLine("Inactive user skipped (PreCondition failed)\n");
+
+// ---- 10. AfterMap with ResolutionContext ----
+Console.WriteLine("--- 10. AfterMap with ResolutionContext ---");
+var servicesContext = new ServiceCollection();
+servicesContext.AddFlowRMapper(cfg =>
+{
+    cfg.CreateMap<UserEntity, UserDto>()
+        .AfterMap((src, dest, ctx) =>
+        {
+            dest.Email = $"processed_at_depth_{ctx.Depth}@test.com";
+            Console.WriteLine($"  Context.Depth: {ctx.Depth}");
+            Console.WriteLine($"  Context.SourceType: {ctx.SourceType.Name}");
+        });
+});
+var contextMapper = servicesContext.BuildServiceProvider().GetRequiredService<IMapper>();
+var contextDto = contextMapper.Map<UserEntity, UserDto>(userEntity);
+Console.WriteLine($"Email after AfterMap: {contextDto.Email}\n");
+
+// ---- 11. IMappingAction ----
+Console.WriteLine("--- 11. IMappingAction ---");
+var servicesAction = new ServiceCollection();
+servicesAction.AddFlowRMapper(cfg =>
+{
+    cfg.CreateMap<UserEntity, UserDto>()
+        .AfterMap(new AuditAction());
+});
+var actionMapper = servicesAction.BuildServiceProvider().GetRequiredService<IMapper>();
+var auditDto = actionMapper.Map<UserEntity, UserDto>(userEntity);
+Console.WriteLine($"Audited email: {auditDto.Email}\n");
+
+// ---- 12. ConvertUsing ----
+Console.WriteLine("--- 12. ConvertUsing ---");
+var servicesConvert = new ServiceCollection();
+servicesConvert.AddFlowRMapper(cfg =>
+{
+    cfg.CreateMap<string, int>()
+        .ConvertUsing(src => int.TryParse(src, out var result) ? result : 0);
+});
+var convertMapper = servicesConvert.BuildServiceProvider().GetRequiredService<IMapper>();
+var number = convertMapper.Map<string, int>("42");
+Console.WriteLine($"String '42' converted to int: {number}\n");
+
+Console.WriteLine("\n=== All Features Demonstrated! ===");
+
+// ============================================================
+// Mapping Actions
+// ============================================================
+public class AuditAction : IMappingAction<UserEntity, UserDto>
+{
+    public void Process(UserEntity source, UserDto destination, ResolutionContext context)
+    {
+        destination.Email = $"audited_{source.Email}";
+    }
+}
 
 // ============================================================
 // Domain Models
@@ -120,7 +216,11 @@ public class ECommerceProfile : MapperProfile
 {
     private static readonly Dictionary<int, string> CategoryNames = new()
     {
-        [1] = "Electronics", [2] = "Clothing", [3] = "Books", [4] = "Food", [5] = "Accessories"
+        [1] = "Electronics",
+        [2] = "Clothing",
+        [3] = "Books",
+        [4] = "Food",
+        [5] = "Accessories"
     };
 
     public override void Configure(IProfileConfigurator cfg)

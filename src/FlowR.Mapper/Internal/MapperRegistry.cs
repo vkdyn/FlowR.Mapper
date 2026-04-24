@@ -1,3 +1,4 @@
+using FlowR.Mapper.Exceptions;
 using System.Collections.Concurrent;
 using System.Reflection;
 

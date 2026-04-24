@@ -1,8 +1,11 @@
+using FlowR.Mapper.Exceptions;
+using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Internal;
 using System.Collections.Concurrent;
 using System.Reflection;
 
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Core;
+
 
 /// <summary>
 /// The FlowR.Mapper engine.
@@ -139,7 +142,20 @@ public sealed class FlowRMapper : IMapper
     {
         // Type converter short-circuits everything
         if (config.TypeConverter != null)
-            return config.TypeConverter.DynamicInvoke(source);
+        {
+            // Check if converter expects destination parameter
+            var converterParams = config.TypeConverter.Method.GetParameters();
+            if (converterParams.Length == 2)
+            {
+                // For 2-param converter, pass existing dest or default value (don't try to create)
+                var destForConverter = existingDest ?? GetDefaultValue(destType);
+                return config.TypeConverter.DynamicInvoke(source, destForConverter);
+            }
+            else
+            {
+                return config.TypeConverter.DynamicInvoke(source);
+            }
+        }
 
         // Check global condition
         if (config.GlobalCondition != null)
@@ -151,16 +167,25 @@ public sealed class FlowRMapper : IMapper
         // Create destination
         var dest = existingDest ?? CreateDestination(config, source);
 
+        // Create resolution context
+        var context = new ResolutionContext(
+            source: source,
+            destination: dest,
+            sourceType: sourceType,
+            destinationType: destType,
+            mapper: this
+        );
+
         // Run before hooks
         foreach (var before in config.BeforeMapActions)
-            before.DynamicInvoke(source, dest);
+            before.Execute(source, dest, context);
 
         // Map all properties
         MapProperties(source, dest, config, sourceType, destType, depth: 0);
 
         // Run after hooks
         foreach (var after in config.AfterMapActions)
-            after.DynamicInvoke(source, dest);
+            after.Execute(source, dest, context);
 
         return dest;
     }
@@ -366,4 +391,9 @@ public sealed class FlowRMapper : IMapper
 
     private bool IsGloballyIgnored(string memberName) =>
         _registry.GlobalIgnorePredicates.Any(pred => pred(memberName));
+
+    private static object? GetDefaultValue(Type type)
+    {
+        return type.IsValueType ? Activator.CreateInstance(type) : null;
+    }
 }

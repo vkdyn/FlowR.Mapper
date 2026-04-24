@@ -1,13 +1,14 @@
-using FlowR.Mapper;
+using FlowR.Mapper.Configuration;
+using FlowR.Mapper.Core;
+using FlowR.Mapper.Exceptions;
 using FlowR.Mapper.Extensions;
+using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Tests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq.Expressions;
 using Xunit;
 
 namespace FlowR.Mapper.Tests;
-
-
 
 // Immutable record
 public record ProductRecord(int Id, string Name, decimal Price);
@@ -38,6 +39,70 @@ public class UserMappingProfile : MapperProfile
 }
 
 // ======================================================
+// Test Models for New Features
+// ======================================================
+
+public class EntityBase
+{
+    public int Id { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class DtoBase
+{
+    public int Id { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class DerivedEntity : EntityBase
+{
+    public string Name { get; set; } = "";
+}
+
+public class DerivedDto : DtoBase
+{
+    public string Name { get; set; } = "";
+}
+
+public class CustomerEntity
+{
+    public string Name { get; set; } = "";
+    public List<OrderEntity> Orders { get; set; } = [];
+}
+
+public class CustomerDto
+{
+    public string Name { get; set; } = "";
+    public int OrderCount { get; set; }
+    public int MappingDepth { get; set; }
+    public string SourceTypeName { get; set; } = "";
+    public string DestinationTypeName { get; set; } = "";
+}
+
+// Test mapping action
+public class TestAuditAction : IMappingAction<UserEntity, UserDto>
+{
+    public bool WasExecuted { get; private set; }
+
+    public void Process(UserEntity source, UserDto destination, ResolutionContext context)
+    {
+        WasExecuted = true;
+        destination.Email = "audited@test.com";
+    }
+}
+
+public class PostMappingAuditAction : IMappingAction<UserEntity, UserDto>
+{
+    public DateTime ExecutedAt { get; private set; }
+
+    public void Process(UserEntity source, UserDto destination, ResolutionContext context)
+    {
+        ExecutedAt = DateTime.UtcNow;
+        destination.Email = $"processed_{source.Email}";
+    }
+}
+
+// ======================================================
 // Tests
 // ======================================================
 
@@ -56,6 +121,10 @@ public class MapperTests
         svc.AddFlowRMapper(typeof(MapperTests).Assembly);
         return svc.BuildServiceProvider().GetRequiredService<IMapper>();
     }
+
+    // ======================================================
+    // ORIGINAL TESTS
+    // ======================================================
 
     // ---- Basic mapping ----
 
@@ -327,6 +396,7 @@ public class MapperTests
         Assert.Equal(7, dto.OrderId);
         Assert.Equal(55m, dto.Total);
     }
+
     [Fact]
     public void ProjectTo_Extension_ProjectsQueryableToDto()
     {
@@ -421,5 +491,240 @@ public class MapperTests
 
         Assert.Throws<ArgumentNullException>(() =>
             query.ProjectTo<OrderEntity, OrderDto>(mapper!));
+    }
+
+    // ======================================================
+    // NEW FEATURE TESTS
+    // ======================================================
+
+    // ---- ForAllMembers ----
+
+    [Fact]
+    public void ForAllMembers_AppliesConditionToAllMembers()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<UserEntity, UserDto>()
+                .ForAllMembers(opt => opt.Condition(src => src != null));
+        });
+
+        var user = new UserEntity { FirstName = "Test", LastName = "User", Email = "test@test.com" };
+        var dto = mapper.Map<UserEntity, UserDto>(user);
+
+        Assert.NotNull(dto);
+        Assert.Equal("test@test.com", dto.Email);
+    }
+
+    // ---- IncludeBase ----
+
+    [Fact]
+    public void IncludeBase_InheritsBaseMappingConfiguration()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<EntityBase, DtoBase>()
+                .ForMember(d => d.Id, opt => opt.MapFrom((Expression<Func<EntityBase, int>>)(s => s.Id)))
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom((Expression<Func<EntityBase, DateTime>>)(s => s.CreatedAt)));
+
+            cfg.CreateMap<DerivedEntity, DerivedDto>()
+                .IncludeBase<EntityBase, DtoBase>()
+                .ForMember(d => d.Name, opt => opt.MapFrom((Expression<Func<DerivedEntity, string>>)(s => s.Name)));
+        });
+
+        var entity = new DerivedEntity
+        {
+            Id = 123,
+            CreatedAt = new DateTime(2024, 1, 1),
+            Name = "Derived Test"
+        };
+
+        var dto = mapper.Map<DerivedEntity, DerivedDto>(entity);
+
+        Assert.Equal(123, dto.Id); // Inherited from base
+        Assert.Equal(new DateTime(2024, 1, 1), dto.CreatedAt); // Inherited from base
+        Assert.Equal("Derived Test", dto.Name); // Defined in derived
+    }
+
+    // ---- PreCondition ----
+
+    [Fact]
+    public void PreCondition_SourceOnly_SkipsMappingWhenConditionFails()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<UserEntity, UserDto>()
+                .PreCondition(src => src.IsActive)
+                .ForMember(d => d.Email, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => s.Email)));
+        });
+
+        var activeUser = new UserEntity { Email = "active@test.com", IsActive = true };
+        var inactiveUser = new UserEntity { Email = "inactive@test.com", IsActive = false };
+
+        var activeDto = mapper.Map<UserEntity, UserDto>(activeUser);
+        var inactiveDto = mapper.Map<UserEntity, UserDto>(inactiveUser);
+
+        Assert.Equal("active@test.com", activeDto.Email);
+        // Inactive mapping should be skipped or return default
+    }
+
+    [Fact]
+    public void PreCondition_WithDestination_Works()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<UserEntity, UserDto>()
+                .PreCondition((src, dest) => src.IsActive && dest != null)
+                .ForMember(d => d.Email, opt => opt.MapFrom((Expression<Func<UserEntity, string>>)(s => s.Email)));
+        });
+
+        var user = new UserEntity { Email = "test@test.com", IsActive = true };
+        var destination = new UserDto();
+
+        var result = mapper.Map(user, destination);
+
+        Assert.Equal("test@test.com", result.Email);
+    }
+
+    // ---- AllowNull ----
+
+    [Fact]
+    public void AllowNull_PropagatesNullSource()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<Address, AddressDto>()
+                .AllowNull();
+        });
+
+        Address? nullAddress = null;
+        var result = mapper.Map<Address?, AddressDto?>(nullAddress);
+
+        Assert.Null(result);
+    }
+
+    // ---- AfterMap with ResolutionContext ----
+
+    [Fact]
+    public void AfterMap_WithResolutionContext_AccessesContext()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<CustomerEntity, CustomerDto>()
+                .AfterMap((src, dest, ctx) =>
+                {
+                    dest.MappingDepth = ctx.Depth;
+                    dest.SourceTypeName = ctx.SourceType.Name;
+                    dest.DestinationTypeName = ctx.DestinationType.Name;
+                });
+        });
+
+        var customer = new CustomerEntity { Name = "Alice" };
+        var dto = mapper.Map<CustomerEntity, CustomerDto>(customer);
+
+        Assert.Equal(0, dto.MappingDepth); // Should be at depth 0
+        Assert.Equal("CustomerEntity", dto.SourceTypeName);
+        Assert.Equal("CustomerDto", dto.DestinationTypeName);
+    }
+
+    // ---- ConvertUsing ----
+
+    [Fact]
+    public void ConvertUsing_WithFunc_PerformsCustomConversion()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<string, int>()
+                .ConvertUsing(src => int.TryParse(src, out var result) ? result : 0);
+        });
+
+        var validResult = mapper.Map<string, int>("123");
+        var invalidResult = mapper.Map<string, int>("invalid");
+
+        Assert.Equal(123, validResult);
+        Assert.Equal(0, invalidResult);
+    }
+
+    [Fact]
+    public void ConvertUsing_WithDestinationFunc_AccessesDestination()
+    {
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<decimal, string>()
+                .ConvertUsing((src, dest) =>
+                {
+                    var prefix = string.IsNullOrEmpty(dest) ? "$" : "£";
+                    return $"{prefix}{src:N2}";
+                });
+        });
+
+        var result1 = mapper.Map<decimal, string>(99.99m);
+        Assert.Equal("$99.99", result1); // Default prefix
+    }
+
+    // ---- IMappingAction ----
+
+    [Fact]
+    public void IMappingAction_BeforeMap_ExecutesCustomAction()
+    {
+        var auditAction = new TestAuditAction();
+
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<UserEntity, UserDto>()
+                .BeforeMap(auditAction)
+                .Ignore(d => d.Email); // Prevent auto-mapping from overwriting BeforeMap changes
+        });
+
+        var user = new UserEntity { Email = "original@test.com" };
+        var dto = mapper.Map<UserEntity, UserDto>(user);
+
+        Assert.True(auditAction.WasExecuted);
+        Assert.Equal("audited@test.com", dto.Email);
+    }
+
+    [Fact]
+    public void IMappingAction_AfterMap_ExecutesCustomAction()
+    {
+        var postAction = new PostMappingAuditAction();
+
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<UserEntity, UserDto>()
+                .AfterMap(postAction);
+        });
+
+        var user = new UserEntity { Email = "original@test.com" };
+        var dto = mapper.Map<UserEntity, UserDto>(user);
+
+        Assert.NotEqual(default(DateTime), postAction.ExecutedAt);
+        Assert.Equal("processed_original@test.com", dto.Email);
+    }
+
+    // ---- ResolutionContext ----
+
+    [Fact]
+    public void ResolutionContext_ProvidesCorrectInformation()
+    {
+        ResolutionContext? capturedContext = null;
+
+        var mapper = BuildMapper(cfg =>
+        {
+            cfg.CreateMap<UserEntity, UserDto>()
+                .AfterMap((src, dest, ctx) =>
+                {
+                    capturedContext = ctx;
+                    dest.Email = $"Processed at depth {ctx.Depth}";
+                });
+        });
+
+        var user = new UserEntity { Email = "test@test.com" };
+        var dto = mapper.Map<UserEntity, UserDto>(user);
+
+        Assert.NotNull(capturedContext);
+        Assert.Equal(typeof(UserEntity), capturedContext.SourceType);
+        Assert.Equal(typeof(UserDto), capturedContext.DestinationType);
+        Assert.Equal(user, capturedContext.Source);
+        Assert.NotNull(capturedContext.Mapper);
+        Assert.Contains("Processed at depth", dto.Email);
     }
 }

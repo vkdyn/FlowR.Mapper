@@ -1,275 +1,239 @@
-# FlowR.Mapper 🗺️
+# FlowR.Mapper - Organized File Structure
 
-[![NuGet](https://img.shields.io/nuget/v/FlowR.Mapper.svg)](https://www.nuget.org/packages/FlowR.Mapper)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/FlowR.Mapper.svg)](https://www.nuget.org/packages/FlowR.Mapper)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/yourusername/FlowR/actions/workflows/ci-mapper.yml/badge.svg)](https://github.com/yourusername/FlowR/actions)
+```
+FlowR.Mapper/
+├── src/FlowR.Mapper/
+│   │
+│   ├── 📁 Interfaces/
+│   │   ├── IMapper.cs                         # Main mapper interface
+│   │   ├── IMappingExpression.cs              # Fluent configuration API
+│   │   ├── IMappingAction.cs                  # ⭐ NEW - Reusable mapping actions
+│   │   └── ITypeConverter.cs                  # Type converter interface (if exists)
+│   │
+│   ├── 📁 Configuration/
+│   │   ├── MapperProfile.cs                   # Base class for profiles
+│   │   ├── ProfileConfigurator.cs             # Profile configuration helper
+│   │   ├── MappingExpression.cs               # IMappingExpression implementation
+│   │   └── NamingConventions.cs               # Naming conventions
+│   │
+│   ├── 📁 Internal/
+│   │   ├── MappingConfiguration.cs            # Internal config storage
+│   │   ├── MappingActionWrapper.cs            # ⭐ NEW - Action wrappers
+│   │   ├── MapperRegistry.cs                  # Registry for mappings
+│   │   └── ProjectionBuilder.cs               # IQueryable projection builder
+│   │
+│   ├── 📁 Core/
+│   │   ├── FlowRMapper.cs                     # Main mapper implementation
+│   │   └── ResolutionContext.cs               # ⭐ NEW - Mapping context
+│   │
+│   ├── 📁 Extensions/
+│   │   ├── ServiceCollectionExtensions.cs     # DI registration
+│   │   └── QueryableMappingExtensions.cs      # IQueryable.ProjectTo extensions
+│   │
+│   └── 📁 Exceptions/
+│       └── Exceptions.cs                      # All exception types
+│
+├── tests/FlowR.Mapper.Tests/
+│   ├── MapperTests.cs                         # Main test suite
+│   ├── 📁 Models/
+│   │   ├── Address.cs
+│   │   ├── AddressDto.cs
+│   │   ├── OrderEntity.cs
+│   │   ├── OrderDto.cs
+│   │   ├── UserEntity.cs
+│   │   ├── UserDto.cs
+│   │   └── UserFlatDto.cs
+│   │
+│   └── 📁 NewFeatures/                        # Optional: Separate new feature tests
+│       └── NewFeatureTests.cs
+│
+└── samples/FlowR.Mapper.Sample/
+    └── Program.cs
+```
 
-**The best free object mapper for .NET — more features, simpler API, zero cost.**
+## Recommended Folder Organization
 
-FlowR.Mapper is a high-performance, open-source alternative to AutoMapper. Map objects, flatten nested types, deep-map hierarchies, project to IQueryable (EF Core), and validate your configuration — all with a clean, fluent API.
+### 📁 **Interfaces/** - Public contracts
+```
+All public-facing interfaces that users interact with
+- IMapper.cs
+- IMappingExpression.cs
+- IMappingAction.cs
+- ITypeConverter.cs (if you have it)
+```
 
----
+### 📁 **Configuration/** - Mapping setup
+```
+Everything related to configuring mappings
+- MapperProfile.cs
+- ProfileConfigurator.cs
+- MappingExpression.cs
+- NamingConventions.cs
+```
 
-## Why FlowR.Mapper over AutoMapper?
+### 📁 **Internal/** - Implementation details
+```
+Internal classes (marked with 'internal' keyword)
+- MappingConfiguration.cs
+- MappingActionWrapper.cs
+- MapperRegistry.cs
+- ProjectionBuilder.cs
+```
 
-| Feature | FlowR.Mapper | AutoMapper |
-|---|---|---|
-| License | ✅ MIT (free forever) | ❌ Commercial license |
-| Basic mapping | ✅ | ✅ |
-| Custom resolvers | ✅ | ✅ |
-| Ignore members | ✅ | ✅ |
-| Deep/nested mapping | ✅ Auto-detected | ✅ |
-| Flattening | ✅ | ✅ |
-| ReverseMap | ✅ | ✅ |
-| Collection mapping | ✅ List, Array, IEnumerable | ✅ |
-| IQueryable projection (EF Core) | ✅ | ✅ |
-| ConstructUsing (records/immutable) | ✅ | ✅ |
-| Conditional member mapping | ✅ | ✅ |
-| Before/After hooks | ✅ | ✅ |
-| Global value transforms | ✅ | ✅ |
-| Global ignore predicates | ✅ | ❌ |
-| Map into existing instance | ✅ | ✅ |
-| Polymorphic/derived type mapping | ✅ | ✅ |
-| Null substitute per member | ✅ | ✅ |
-| Type converters | ✅ | ✅ |
-| Naming conventions (snake_case etc.) | ✅ Built-in | ✅ |
-| Validate all members mapped | ✅ | ✅ |
-| Map<TDest>(object) non-generic | ✅ | ✅ |
-| Max depth control | ✅ | ❌ |
-| Clear error messages | ✅ | ⚠️ |
-| Assembly scanning for profiles | ✅ | ✅ |
+### 📁 **Core/** - Main engine
+```
+Core mapper implementation
+- FlowRMapper.cs
+- ResolutionContext.cs
+```
 
----
+### 📁 **Extensions/** - Extension methods
+```
+All extension method classes
+- ServiceCollectionExtensions.cs
+- QueryableMappingExtensions.cs
+```
 
-## Installation
+### 📁 **Exceptions/** - Exception types
+```
+All custom exception classes
+- Exceptions.cs (or split into individual files)
+```
 
+## Alternative Simpler Structure
+
+If you prefer fewer folders:
+
+```
+FlowR.Mapper/
+├── src/FlowR.Mapper/
+│   │
+│   ├── 📁 Abstractions/              # Interfaces only
+│   │   ├── IMapper.cs
+│   │   ├── IMappingExpression.cs
+│   │   └── IMappingAction.cs
+│   │
+│   ├── 📁 Configuration/             # Profiles & setup
+│   │   ├── MapperProfile.cs
+│   │   ├── MappingExpression.cs
+│   │   └── ProfileConfigurator.cs
+│   │
+│   ├── 📁 Internal/                  # Implementation
+│   │   ├── FlowRMapper.cs
+│   │   ├── MappingConfiguration.cs
+│   │   ├── MappingActionWrapper.cs
+│   │   ├── MapperRegistry.cs
+│   │   ├── ProjectionBuilder.cs
+│   │   └── ResolutionContext.cs
+│   │
+│   ├── 📁 Extensions/                # Extension methods
+│   │   ├── ServiceCollectionExtensions.cs
+│   │   └── QueryableMappingExtensions.cs
+│   │
+│   ├── Exceptions.cs
+│   └── NamingConventions.cs
+```
+
+## Migration Steps
+
+### Step 1: Create Folders
 ```bash
-dotnet add package FlowR.Mapper
+mkdir src/FlowR.Mapper/Interfaces
+mkdir src/FlowR.Mapper/Configuration
+mkdir src/FlowR.Mapper/Internal
+mkdir src/FlowR.Mapper/Core
+mkdir src/FlowR.Mapper/Extensions
+mkdir src/FlowR.Mapper/Exceptions
 ```
 
----
+### Step 2: Move Files
+```bash
+# Interfaces
+mv IMapper.cs Interfaces/
+mv IMappingExpression.cs Interfaces/
+mv IMappingAction.cs Interfaces/
 
-## Quick Start
+# Configuration
+mv MapperProfile.cs Configuration/
+mv ProfileConfigurator.cs Configuration/
+mv MappingExpression.cs Configuration/
+mv NamingConventions.cs Configuration/
 
-### 1. Create a Profile
+# Internal
+mv MappingConfiguration.cs Internal/
+mv MappingActionWrapper.cs Internal/
+mv MapperRegistry.cs Internal/
+mv ProjectionBuilder.cs Internal/
 
+# Core
+mv FlowRMapper.cs Core/
+mv ResolutionContext.cs Core/
+
+# Extensions
+mv ServiceCollectionExtensions.cs Extensions/
+mv QueryableMappingExtensions.cs Extensions/
+
+# Exceptions
+mv Exceptions.cs Exceptions/
+```
+
+### Step 3: Update Namespaces
+
+All files should have:
 ```csharp
-public class UserProfile : MapperProfile
-{
-    public override void Configure(IProfileConfigurator cfg)
-    {
-        cfg.CreateMap<UserEntity, UserDto>()
-            .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"))
-            .ForMember(d => d.Age, opt => opt.MapFrom(s => DateTime.Today.Year - s.DateOfBirth.Year))
-            .DeepMap(); // Auto-maps nested Address -> AddressDto if registered
+namespace FlowR.Mapper.{FolderName};
 
-        cfg.CreateMap<Address, AddressDto>();
-        cfg.CreateMap<OrderEntity, OrderDto>();
-    }
-}
+// Examples:
+namespace FlowR.Mapper.Interfaces;
+namespace FlowR.Mapper.Configuration;
+namespace FlowR.Mapper.Internal;
+namespace FlowR.Mapper.Core;
+namespace FlowR.Mapper.Extensions;
+namespace FlowR.Mapper.Exceptions;
 ```
 
-### 2. Register
+### Step 4: Update .csproj (if needed)
 
+The .csproj should auto-detect the new structure, but verify:
+```xml
+<ItemGroup>
+  <Compile Include="Interfaces\*.cs" />
+  <Compile Include="Configuration\*.cs" />
+  <Compile Include="Internal\*.cs" />
+  <Compile Include="Core\*.cs" />
+  <Compile Include="Extensions\*.cs" />
+  <Compile Include="Exceptions\*.cs" />
+</ItemGroup>
+```
+
+## Namespace Usage After Reorganization
+
+Users will need to add using statements:
 ```csharp
-builder.Services.AddFlowRMapper(options =>
-{
-    options.ValidateOnStartup = true; // Catch config errors at startup
-},
-typeof(Program).Assembly);
+using FlowR.Mapper;                    // Still the main namespace
+using FlowR.Mapper.Interfaces;         // For IMapper, IMappingAction
+using FlowR.Mapper.Configuration;      // For MapperProfile
+using FlowR.Mapper.Extensions;         // For .AddFlowRMapper(), .ProjectTo()
 ```
 
-### 3. Inject and Use
+**OR** keep backward compatibility by adding global usings in a common file:
 
+**GlobalUsings.cs**:
 ```csharp
-public class UserService
-{
-    private readonly IMapper _mapper;
-    public UserService(IMapper mapper) => _mapper = mapper;
-
-    public UserDto GetUser(UserEntity user) => _mapper.Map<UserEntity, UserDto>(user);
-
-    public List<UserDto> GetUsers(List<UserEntity> users)
-        => _mapper.MapToList<UserEntity, UserDto>(users);
-}
+global using FlowR.Mapper.Interfaces;
+global using FlowR.Mapper.Configuration;
+global using FlowR.Mapper.Extensions;
+global using FlowR.Mapper.Exceptions;
 ```
 
----
+## Benefits of This Structure
 
-## All Features
+✅ **Clear separation of concerns**
+✅ **Easy to navigate** - find interfaces in one place
+✅ **Better encapsulation** - Internal folder is clearly internal
+✅ **Scalability** - Easy to add new features in right place
+✅ **Standard .NET conventions** - Follows common patterns
 
-### Custom Resolvers
+## Recommendation
 
-```csharp
-cfg.CreateMap<UserEntity, UserDto>()
-    .ForMember(d => d.FullName, opt => opt.MapFrom(s => $"{s.FirstName} {s.LastName}"))
-    .ForMember(d => d.DisplayPrice, opt => opt.MapFrom((src, dest) => src.Price * dest.Multiplier))
-    .ForMember(d => d.Region, opt => opt.UseValue("APAC")); // Constant value
-```
-
-### Ignore Members
-
-```csharp
-cfg.CreateMap<UserEntity, UserDto>()
-    .Ignore(d => d.InternalNotes)
-    .Ignore(d => d.PasswordHash);
-```
-
-### Flattening
-
-```csharp
-// source.Address.City -> destination.AddressCity (auto-detected by naming)
-cfg.CreateMap<UserEntity, UserFlatDto>().Flatten();
-```
-
-### Deep Mapping
-
-```csharp
-cfg.CreateMap<Address, AddressDto>(); // Register nested mapping
-cfg.CreateMap<UserEntity, UserDto>().DeepMap(); // FlowR auto-recurses
-```
-
-### Immutable Types / Records
-
-```csharp
-cfg.CreateMap<ProductEntity, ProductDto>(src =>
-    new ProductDto(src.Id, src.Name, src.Price, GetCategory(src.CategoryId)));
-```
-
-### Collection Mapping
-
-```csharp
-var list = mapper.MapToList<OrderEntity, OrderDto>(orders);
-var arr  = mapper.MapToArray<OrderEntity, OrderDto>(orders);
-var enu  = mapper.MapList<OrderEntity, OrderDto>(orders); // IEnumerable<T>
-```
-
-### EF Core Projections
-
-```csharp
-// Only queries the columns needed — no SELECT *
-var dtos = await dbContext.Users
-    .Where(u => u.IsActive)
-    .ProjectTo<UserEntity, UserDto>(mapper) // Or use mapper.ProjectTo<>()
-    .ToListAsync();
-```
-
-### Conditional Mapping
-
-```csharp
-cfg.CreateMap<UserEntity, UserDto>()
-    .ForMember(d => d.Email, opt =>
-    {
-        opt.MapFrom(s => s.Email);
-        opt.Condition(s => s.IsActive); // Only map if active
-    })
-    .When(s => s.Id > 0); // Global condition for entire mapping
-```
-
-### Before/After Hooks
-
-```csharp
-cfg.CreateMap<UserEntity, UserDto>()
-    .BeforeMap((src, dest) => _auditLog.Record(src.Id))
-    .AfterMap((src, dest) => dest.DisplayName = dest.FullName.ToUpper());
-```
-
-### ReverseMap
-
-```csharp
-cfg.CreateMap<OrderEntity, OrderDto>().ReverseMap();
-// Now both OrderEntity->OrderDto and OrderDto->OrderEntity are registered
-```
-
-### Global Value Transforms
-
-```csharp
-// Applied to ALL string properties across ALL mappings
-cfg.AddValueTransform<string>(s => s?.Trim() ?? s);
-cfg.AddValueTransform<decimal>(d => Math.Round(d, 2));
-```
-
-### Global Ignore
-
-```csharp
-// Ignore any member named "CreatedAt" or "UpdatedAt" everywhere
-cfg.GlobalIgnore(name => name.EndsWith("At") && name.StartsWith("Created") || name.StartsWith("Updated"));
-```
-
-### Max Depth (circular references)
-
-```csharp
-cfg.CreateMap<CategoryEntity, CategoryDto>()
-    .DeepMap()
-    .MaxDepth(3); // Stop recursing after 3 levels
-```
-
-### Null Substitutes
-
-```csharp
-cfg.CreateMap<UserEntity, UserDto>()
-    .ForMember(d => d.Email, opt => opt.NullSubstitute("noreply@example.com"));
-```
-
-### Naming Conventions
-
-```csharp
-cfg.AddNamingConvention(new SnakeCaseToPascalCaseConvention()); // first_name -> FirstName
-cfg.AddNamingConvention(new CamelCaseToPascalCaseConvention()); // firstName -> FirstName
-```
-
-### Validate Configuration
-
-```csharp
-// At startup — throws MapperConfigurationException listing all unmapped members
-mapper.AssertConfigurationIsValid();
-
-// Or inline when defining the mapping
-cfg.CreateMap<UserEntity, UserDto>().ValidateAllMembersAreMapped();
-```
-
----
-
-## Migration from AutoMapper
-
-Most code is a direct 1:1 swap:
-
-```csharp
-// AutoMapper
-services.AddAutoMapper(typeof(Program));
-_mapper.Map<UserDto>(user);
-
-// FlowR.Mapper
-services.AddFlowRMapper(typeof(Program).Assembly);
-_mapper.Map<UserEntity, UserDto>(user);
-```
-
-Profile syntax:
-
-```csharp
-// AutoMapper
-CreateMap<UserEntity, UserDto>()
-    .ForMember(d => d.Name, opt => opt.MapFrom(s => s.FirstName));
-
-// FlowR.Mapper — identical structure
-cfg.CreateMap<UserEntity, UserDto>()
-    .ForMember(d => d.Name, opt => opt.MapFrom(s => s.FirstName));
-```
-
----
-
-## License
-
-MIT — free for personal and commercial use, forever.
-
----
-
-## Part of the FlowR Ecosystem
-
-| Package | Description |
-|---|---|
-| `FlowR` | Free MediatR alternative — CQRS, requests, notifications, pipeline |
-| `FlowR.Mapper` | Free AutoMapper alternative — object mapping, projections, transforms |
-
-Star ⭐ the repo to support free open-source .NET tooling!
+I suggest the **6-folder structure** (Interfaces, Configuration, Internal, Core, Extensions, Exceptions) as it provides the best organization without being overly complex. It's clean, professional, and follows .NET library conventions.

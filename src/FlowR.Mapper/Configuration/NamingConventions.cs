@@ -1,4 +1,4 @@
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Configuration;
 
 /// <summary>
 /// PascalCase naming convention — the default for .NET.

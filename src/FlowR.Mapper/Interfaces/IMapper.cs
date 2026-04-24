@@ -1,4 +1,4 @@
-namespace FlowR.Mapper;
+namespace FlowR.Mapper.Interfaces;
 
 /// <summary>
 /// The core mapper. Inject this anywhere you need object mapping.

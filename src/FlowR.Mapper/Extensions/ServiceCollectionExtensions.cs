@@ -1,3 +1,6 @@
+using FlowR.Mapper.Configuration;
+using FlowR.Mapper.Core;
+using FlowR.Mapper.Interfaces;
 using FlowR.Mapper.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
