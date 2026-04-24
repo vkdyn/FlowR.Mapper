@@ -270,28 +270,34 @@ public sealed class FlowRMapper : IMapper
 
             object? value = null;
             bool resolved = false;
+            Type? sourceMemberType = null;
 
             if (config.MemberConstants.TryGetValue(destinationProperty.Name, out object? constant))
             {
                 value = constant;
                 resolved = true;
+                sourceMemberType = constant?.GetType();
             }
             else if (config.ValueResolvers.TryGetValue(destinationProperty.Name, out object? valueResolver))
             {
                 MethodInfo? resolveMethod = valueResolver.GetType().GetMethod("Resolve");
                 object? currentValue = destinationProperty.GetValue(destination);
+
                 value = resolveMethod!.Invoke(valueResolver, [source, destination, currentValue, context]);
                 resolved = true;
+                sourceMemberType = value?.GetType();
             }
             else if (config.MemberResolvers.TryGetValue(destinationProperty.Name, out Delegate? resolver))
             {
                 value = InvokeResolver(resolver, source, destination);
                 resolved = true;
+                sourceMemberType = value?.GetType();
             }
             else if (sourceProperties.TryGetValue(destinationProperty.Name, out PropertyInfo? sourceProperty))
             {
                 value = sourceProperty.GetValue(source);
                 resolved = true;
+                sourceMemberType = sourceProperty.PropertyType;
 
                 if (config.DeepMapEnabled
                     && value != null
@@ -299,13 +305,20 @@ public sealed class FlowRMapper : IMapper
                     && _registry.Has(sourceProperty.PropertyType, destinationProperty.PropertyType))
                 {
                     MappingConfiguration nestedConfig = _registry.GetOrThrow(sourceProperty.PropertyType, destinationProperty.PropertyType);
-                    value = ExecuteMapping(value, null, nestedConfig, sourceProperty.PropertyType, destinationProperty.PropertyType);
+
+                    value = ExecuteMapping(
+                        value,
+                        null,
+                        nestedConfig,
+                        sourceProperty.PropertyType,
+                        destinationProperty.PropertyType);
                 }
             }
             else if (config.FlattenEnabled)
             {
                 value = TryGetFlattenedValue(source, sourceProperties, destinationProperty.Name);
                 resolved = value != null;
+                sourceMemberType = value?.GetType();
             }
 
             if (!resolved)
@@ -324,6 +337,7 @@ public sealed class FlowRMapper : IMapper
             if (value == null && config.MemberNullSubstitutes.TryGetValue(destinationProperty.Name, out object? nullSubstitute))
             {
                 value = nullSubstitute;
+                sourceMemberType = nullSubstitute?.GetType();
             }
 
             if (value == null && destinationProperty.PropertyType.IsValueType && Nullable.GetUnderlyingType(destinationProperty.PropertyType) == null)
@@ -334,11 +348,38 @@ public sealed class FlowRMapper : IMapper
             if (value != null && _registry.GlobalValueTransforms.TryGetValue(destinationProperty.PropertyType, out Delegate? transform))
             {
                 value = transform.DynamicInvoke(value);
+                sourceMemberType = value?.GetType();
             }
 
             if (value != null && IsCollectionType(destinationProperty.PropertyType) && IsCollectionType(value.GetType()))
             {
                 value = MapCollection(value, destinationProperty.PropertyType, depth + 1);
+                sourceMemberType = value?.GetType();
+            }
+
+            if (value != null && !destinationProperty.PropertyType.IsAssignableFrom(value.GetType()))
+            {
+                Type actualSourceMemberType = value.GetType();
+                Type destinationMemberType = destinationProperty.PropertyType;
+
+                if (!IsSimpleType(actualSourceMemberType)
+                    && !IsSimpleType(destinationMemberType)
+                    && _registry.Has(actualSourceMemberType, destinationMemberType))
+                {
+                    MappingConfiguration nestedConfig = _registry.GetOrThrow(actualSourceMemberType, destinationMemberType);
+
+                    value = ExecuteMapping(
+                        value,
+                        null,
+                        nestedConfig,
+                        actualSourceMemberType,
+                        destinationMemberType);
+                }
+                else
+                {
+                    throw new MappingException(
+                        $"No mapping found for '{actualSourceMemberType.Name}' to '{destinationMemberType.Name}' on property '{destinationProperty.Name}'.");
+                }
             }
 
             try
@@ -350,7 +391,6 @@ public sealed class FlowRMapper : IMapper
                 throw new MappingException($"Error setting '{destinationProperty.Name}' on '{destinationType.Name}': {exception.Message}", exception);
             }
         }
-
         foreach (KeyValuePair<string, Delegate> pathMapping in config.PathResolvers)
         {
             SetNestedProperty(destination, pathMapping.Key, pathMapping.Value.DynamicInvoke(source));
