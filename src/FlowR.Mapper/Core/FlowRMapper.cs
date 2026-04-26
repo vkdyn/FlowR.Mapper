@@ -36,6 +36,7 @@ public sealed class FlowRMapper : IMapper
         MappingConfiguration config = _registry.GetOrThrow(actualSourceType, destinationType);
         return (TDestination)ExecuteMapping(source, null, config, actualSourceType, destinationType)!;
     }
+
     /// <inheritdoc />
     public TDestination Map<TSource, TDestination>(TSource source)
     {
@@ -112,6 +113,34 @@ public sealed class FlowRMapper : IMapper
     public bool HasMapping<TSource, TDestination>()
     {
         return _registry.Has(typeof(TSource), typeof(TDestination));
+    }
+
+    /// <inheritdoc />
+    public void ApplyPostQueryResolvers<TSource, TDestination>(IEnumerable<TDestination> results)
+    {
+        MappingConfiguration config = _registry.GetOrThrow(typeof(TSource), typeof(TDestination));
+        HashSet<string> postQueryMembers = ProjectionBuilder.GetPostQueryMembers(config);
+        if (postQueryMembers.Count == 0) return;
+
+        var destProps = typeof(TDestination)
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(p => p.CanWrite && postQueryMembers.Contains(p.Name))
+            .ToList();
+
+        foreach (TDestination destination in results)
+        {
+            if (destination == null) continue;
+            foreach (var destProp in destProps)
+            {
+                if (!config.MemberResolvers.TryGetValue(destProp.Name, out Delegate? resolver)) continue;
+                try
+                {
+                    var value = resolver.DynamicInvoke(destination);
+                    destProp.SetValue(destination, value);
+                }
+                catch { /* best-effort: skip members that fail post-query */ }
+            }
+        }
     }
 
     /// <inheritdoc />

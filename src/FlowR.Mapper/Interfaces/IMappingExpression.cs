@@ -197,9 +197,9 @@ public interface IMappingExpression<TSource, TDestination>
 /// </summary>
 public interface IMemberOptions<TSource, TDestination, TMember>
 {
-    /// <summary>Maps from a custom resolve function.</summary>
+    /// <summary>Maps from a LINQ expression — EF Core translates to SQL in ProjectTo. Also accepts compiled lambdas.</summary>
     IMemberOptions<TSource, TDestination, TMember> MapFrom(
-        Func<TSource, TMember> resolver);
+        Expression<Func<TSource, TMember>> resolverExpression);
 
     /// <summary>Maps from a custom resolve function with context (destination access).</summary>
     IMemberOptions<TSource, TDestination, TMember> MapFrom(

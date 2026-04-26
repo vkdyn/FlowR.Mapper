@@ -14,6 +14,8 @@ internal sealed class MappingConfiguration
 
     // Member-level overrides: destination property name -> resolver func
     public Dictionary<string, Delegate> MemberResolvers { get; } = new();
+    // Expression-based resolvers — stored alongside compiled Func for ProjectTo SQL translation
+    public Dictionary<string, LambdaExpression> MemberExpressions { get; } = new();
     // Ignored destination member names
     public HashSet<string> IgnoredMembers { get; } = new();
     // Conditional member mapping: dest member name -> condition

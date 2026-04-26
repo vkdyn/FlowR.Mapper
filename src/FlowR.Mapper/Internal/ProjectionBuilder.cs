@@ -6,6 +6,7 @@ namespace FlowR.Mapper.Internal;
 /// <summary>
 /// Builds LINQ projection expressions for use with IQueryable (EF Core, Dapper, etc.)
 /// Only selects the columns needed — generates efficient SQL.
+/// Members with Func-only resolvers are skipped here and applied post-query by FlowRMapper.
 /// </summary>
 internal static class ProjectionBuilder
 {
@@ -21,6 +22,21 @@ internal static class ProjectionBuilder
             bindings);
 
         return Expression.Lambda<Func<TSource, TDestination>>(body, sourceParam);
+    }
+
+    /// <summary>
+    /// Returns the set of destination member names that have Func-only resolvers
+    /// and were therefore skipped in the SQL projection — caller must apply them post-query.
+    /// </summary>
+    public static HashSet<string> GetPostQueryMembers(MappingConfiguration config)
+    {
+        var result = new HashSet<string>();
+        foreach (var key in config.MemberResolvers.Keys)
+        {
+            if (!config.MemberExpressions.ContainsKey(key))
+                result.Add(key);
+        }
+        return result;
     }
 
     private static List<MemberBinding> BuildBindings(
@@ -50,13 +66,18 @@ internal static class ProjectionBuilder
 
             Expression? valueExpr = null;
 
-            // Custom resolver (lambda only — can't use arbitrary Funcs in expression trees)
-            if (config.MemberResolvers.TryGetValue(destProp.Name, out var resolver))
+            // Expression-based resolver — fully inlined, EF Core can translate to SQL
+            if (config.MemberExpressions.TryGetValue(destProp.Name, out var memberExpr))
             {
-                // Wrap resolver in a constant + invoke — works for EF Core in-memory eval
-                var resolverConst = Expression.Constant(resolver);
-                var invokeExpr = Expression.Invoke(resolverConst, sourceExpr);
-                valueExpr = Expression.Convert(invokeExpr, destProp.PropertyType);
+                valueExpr = ExpressionParameterReplacer.Replace(
+                    memberExpr.Body, memberExpr.Parameters[0], sourceExpr);
+                if (valueExpr.Type != destProp.PropertyType)
+                    valueExpr = Expression.Convert(valueExpr, destProp.PropertyType);
+            }
+            // Func-only resolver — skip in SQL projection, applied post-query by FlowRMapper
+            else if (config.MemberResolvers.ContainsKey(destProp.Name))
+            {
+                continue;
             }
             // Constant value
             else if (config.MemberConstants.TryGetValue(destProp.Name, out var constant))
@@ -162,11 +183,6 @@ internal static class ProjectionBuilder
             ?.GetGenericArguments()[0];
     }
 
-    /// <summary>
-    /// Builds an expression equivalent to: <c>src.SourceCollection.Select(x =&gt; new TDest { ... }).ToList()</c>
-    /// (or .ToArray() / .ToHashSet() depending on destination type). Returns null if no element-type mapping
-    /// can be resolved and the collections aren't directly assignable.
-    /// </summary>
     private static Expression? TryBuildCollectionProjection(
         Expression sourceCollectionExpr,
         Type sourceCollectionType,
@@ -178,11 +194,8 @@ internal static class ProjectionBuilder
         var destElementType = GetCollectionElementType(destCollectionType);
 
         if (sourceElementType == null || destElementType == null)
-        {
             return null;
-        }
 
-        // Build per-element projection expression: x => new TDest { ... } or x => x (when types match)
         Expression elementSelector;
         var elementParam = Expression.Parameter(sourceElementType, "x");
 
@@ -200,7 +213,6 @@ internal static class ProjectionBuilder
         }
         else if (destElementType.IsAssignableFrom(sourceElementType))
         {
-            // Element types are compatible without an explicit map (e.g. base/derived)
             Expression body = sourceElementType == destElementType
                 ? (Expression)elementParam
                 : Expression.Convert(elementParam, destElementType);
@@ -208,20 +220,14 @@ internal static class ProjectionBuilder
         }
         else
         {
-            // No way to project elements safely.
             return null;
         }
 
-        // Source as IEnumerable<TSourceElement> for Enumerable.Select.
-        // EF Core will translate Select+ToList over a navigation property to SQL.
-        var sourceAsEnumerable = sourceCollectionExpr;
         var enumerableOfSource = typeof(IEnumerable<>).MakeGenericType(sourceElementType);
-        if (!enumerableOfSource.IsAssignableFrom(sourceCollectionExpr.Type))
-        {
-            sourceAsEnumerable = Expression.Convert(sourceCollectionExpr, enumerableOfSource);
-        }
+        var sourceAsEnumerable = enumerableOfSource.IsAssignableFrom(sourceCollectionExpr.Type)
+            ? sourceCollectionExpr
+            : Expression.Convert(sourceCollectionExpr, enumerableOfSource);
 
-        // Enumerable.Select<TSource, TResult>(IEnumerable<TSource>, Func<TSource, TResult>)
         var selectCall = Expression.Call(
             typeof(Enumerable),
             nameof(Enumerable.Select),
@@ -229,7 +235,6 @@ internal static class ProjectionBuilder
             sourceAsEnumerable,
             elementSelector);
 
-        // Materialize into the requested destination collection type.
         return BuildMaterialization(selectCall, destElementType, destCollectionType);
     }
 
@@ -238,50 +243,59 @@ internal static class ProjectionBuilder
         Type destElementType,
         Type destCollectionType)
     {
-        // Array
         if (destCollectionType.IsArray)
-        {
             return Expression.Call(typeof(Enumerable), nameof(Enumerable.ToArray),
                 new[] { destElementType }, selectCall);
-        }
 
-        // Concrete List<T> or anything assignable from List<T>
         var listType = typeof(List<>).MakeGenericType(destElementType);
         if (destCollectionType.IsAssignableFrom(listType))
-        {
             return Expression.Call(typeof(Enumerable), nameof(Enumerable.ToList),
                 new[] { destElementType }, selectCall);
-        }
 
-        // HashSet<T> or anything assignable from HashSet<T>
         var hashSetType = typeof(HashSet<>).MakeGenericType(destElementType);
         if (destCollectionType.IsAssignableFrom(hashSetType))
         {
-            // Enumerable.ToHashSet<T>(IEnumerable<T>) — available in .NET Core 2.0+ / netstandard2.1+
             var toHashSet = typeof(Enumerable).GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .FirstOrDefault(m => m.Name == nameof(Enumerable.ToHashSet)
-                                     && m.GetParameters().Length == 1);
+                .FirstOrDefault(m => m.Name == nameof(Enumerable.ToHashSet) && m.GetParameters().Length == 1);
             if (toHashSet != null)
-            {
                 return Expression.Call(toHashSet.MakeGenericMethod(destElementType), selectCall);
-            }
-            // Fallback: new HashSet<T>(IEnumerable<T>)
+
             var ctor = hashSetType.GetConstructor(new[] { typeof(IEnumerable<>).MakeGenericType(destElementType) });
             if (ctor != null) return Expression.New(ctor, selectCall);
         }
 
-        // Concrete collection with IEnumerable<T> constructor (e.g. Collection<T>, ObservableCollection<T>)
         if (!destCollectionType.IsInterface && !destCollectionType.IsAbstract)
         {
             var ctor = destCollectionType.GetConstructor(new[] { typeof(IEnumerable<>).MakeGenericType(destElementType) });
             if (ctor != null) return Expression.New(ctor, selectCall);
         }
 
-        // Last resort: ToList() and rely on assignment compatibility (covers IEnumerable<T>, ICollection<T>, IList<T>, IReadOnlyList<T>, etc.)
         var toListCall = Expression.Call(typeof(Enumerable), nameof(Enumerable.ToList),
             new[] { destElementType }, selectCall);
         return destCollectionType.IsAssignableFrom(toListCall.Type)
             ? toListCall
             : (Expression)Expression.Convert(toListCall, destCollectionType);
     }
+}
+
+/// <summary>
+/// Replaces a specific parameter in an expression tree with another expression.
+/// Used to inline lambda bodies directly into projection trees for EF Core SQL translation.
+/// </summary>
+internal sealed class ExpressionParameterReplacer : ExpressionVisitor
+{
+    private readonly ParameterExpression _target;
+    private readonly Expression _replacement;
+
+    private ExpressionParameterReplacer(ParameterExpression target, Expression replacement)
+    {
+        _target = target;
+        _replacement = replacement;
+    }
+
+    public static Expression Replace(Expression body, ParameterExpression target, Expression replacement)
+        => new ExpressionParameterReplacer(target, replacement).Visit(body)!;
+
+    protected override Expression VisitParameter(ParameterExpression node)
+        => node == _target ? _replacement : base.VisitParameter(node);
 }
