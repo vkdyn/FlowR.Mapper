@@ -255,11 +255,17 @@ internal sealed class MemberOptions<TSource, TDestination, TMember>
         _config = config;
     }
 
-    public IMemberOptions<TSource, TDestination, TMember> MapFrom(Expression<Func<TSource, TMember>> resolverExpression)
+    public IMemberOptions<TSource, TDestination, TMember> MapFrom(Func<TSource, TMember> resolver)
     {
-        // Store compiled Func for runtime mapping
+        _config.MemberResolvers[_memberName] = resolver;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> MapFromExpression(Expression<Func<TSource, TMember>> resolverExpression)
+    {
+        // Store compiled Func for runtime mapping — identical behaviour to MapFrom()
         _config.MemberResolvers[_memberName] = resolverExpression.Compile();
-        // Store expression tree so ProjectionBuilder can inline it for EF Core SQL translation
+        // Also store the expression tree so ProjectionBuilder can inline it for EF Core SQL translation
         _config.MemberExpressions[_memberName] = resolverExpression;
         return this;
     }
