@@ -25,10 +25,17 @@ public sealed class FlowRMapper : IMapper
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        MappingConfiguration config = _registry.GetOrThrow(source.GetType(), typeof(TDestination));
-        return (TDestination)ExecuteMapping(source, null, config, source.GetType(), typeof(TDestination))!;
-    }
+        Type actualSourceType = source.GetType();
+        Type destinationType = typeof(TDestination);
 
+        if (IsCollectionType(actualSourceType) && IsCollectionType(destinationType))
+        {
+            return (TDestination)MapCollection(source, destinationType, 0)!;
+        }
+
+        MappingConfiguration config = _registry.GetOrThrow(actualSourceType, destinationType);
+        return (TDestination)ExecuteMapping(source, null, config, actualSourceType, destinationType)!;
+    }
     /// <inheritdoc />
     public TDestination Map<TSource, TDestination>(TSource source)
     {
