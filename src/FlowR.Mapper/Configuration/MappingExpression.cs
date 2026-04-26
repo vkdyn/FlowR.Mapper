@@ -225,13 +225,13 @@ internal sealed class MappingExpression<TSource, TDestination> : IMappingExpress
     {
         var parts = new List<string>();
         var current = expression.Body;
-        
+
         while (current is MemberExpression member)
         {
             parts.Insert(0, member.Member.Name);
             current = member.Expression;
         }
-        
+
         return string.Join(".", parts);
     }
 
@@ -258,6 +258,15 @@ internal sealed class MemberOptions<TSource, TDestination, TMember>
     public IMemberOptions<TSource, TDestination, TMember> MapFrom(Func<TSource, TMember> resolver)
     {
         _config.MemberResolvers[_memberName] = resolver;
+        return this;
+    }
+
+    public IMemberOptions<TSource, TDestination, TMember> MapFromExpression(Expression<Func<TSource, TMember>> resolverExpression)
+    {
+        // Store compiled Func for runtime mapping — identical behaviour to MapFrom()
+        _config.MemberResolvers[_memberName] = resolverExpression.Compile();
+        // Also store the expression tree so ProjectionBuilder can inline it for EF Core SQL translation
+        _config.MemberExpressions[_memberName] = resolverExpression;
         return this;
     }
 
